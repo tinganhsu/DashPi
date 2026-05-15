@@ -111,8 +111,8 @@ def set_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
         "img-src 'self' data: https:; "
         "font-src 'self'; "
         "connect-src 'self'"
