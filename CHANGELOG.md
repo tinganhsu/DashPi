@@ -2,16 +2,39 @@
 
 All notable changes to DashPi are documented here.
 
-## [Unreleased]
+## [2.1.2] — 2026-05-15
+
+Fork maintenance release collecting the changes made after the original InkyPi fork,
+with emphasis on plugin management, map/CDN behavior, display reliability, and
+the newer dashboard-only plugins.
+
+### Added
+- Built-in Plugin Manager plugin for viewing installed plugins and managing plugin metadata from the web UI.
+- APOD setting to show or hide the NASA image title overlay; existing installs keep the title enabled by default.
+- Astro Targets plugin for tonight's best deep-sky imaging targets, including observer-location search and map selection.
+- Waveshare install support and framebuffer configuration for DashPi LCD deployments.
+- Fork update workflow documentation for keeping the DashPi fork aligned with upstream changes.
+- GitHub Actions CI workflow — runs full pytest suite on every push/PR to main.
+- Critical path tests for `RefreshTask` — unit tests for `ManualRefresh`, `AutoRefresh`, `LoopRefresh` action classes; end-to-end smoke test using real Clock plugin through mock display.
+
+### Changed
+- Leaflet now loads from the pinned CDN version used by map-based plugins; DashPi CSP now explicitly allows `https://unpkg.com` for scripts and styles.
+- Removed vendored local Leaflet JS/CSS/image assets and stopped re-downloading them in `install/update_vendors.sh`.
+- Weather plugin now uses the resolved location name as the display title instead of a separate custom title option.
+- Stocks plugin market-open logic now includes a NYSE holiday calendar.
+- Flight Tracker map rendering now differentiates aircraft categories: airliner, business jet, general aviation, and helicopter.
+- Flight Tracker labels now include speed and use collision detection plus per-line backgrounds to reduce overlap.
+- CI now uses Node.js 24 and explicitly installs pytest for reliable test runs.
 
 ### Fixed
 - Config import race condition — loops imported via web UI were silently lost on restart because `write_config()` serialized the old in-memory `loop_manager` before the new one was built. Fixed by updating `device_config.config` directly, rebuilding `loop_manager`, then calling `write_config()` in the correct order.
 - Stocks plugin "Last Updated" timestamp showed wrong time when device timezone differs from Eastern (hardcoded `America/New_York` replaced with device's configured timezone).
 - Invalid timezone strings in stocks plugin and brightness scheduler no longer crash; both fall back to UTC with a warning.
-
-### Added
-- GitHub Actions CI workflow — runs full pytest suite on every push/PR to main.
-- Critical path tests for `RefreshTask` — unit tests for `ManualRefresh`, `AutoRefresh`, `LoopRefresh` action classes; end-to-end smoke test using real Clock plugin through mock display.
+- Display page auto-refresh is more reliable on Safari and iPad web apps.
+- Flight Tracker aircraft label backgrounds no longer obscure adjacent text lines; padding and glyph clipping were tightened across multiple label layouts.
+- Commercial callsign fallback now also applies when aircraft type is unrecognized.
+- Loop Edit/Delete/Activate buttons work after `tojson` escaping changes in inline handlers.
+- Memory leaks reduced through explicit `BytesIO` cleanup and earlier image resizing.
 
 ---
 
