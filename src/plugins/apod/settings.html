@@ -29,6 +29,15 @@
 </div>
 
 <div class="form-group">
+    <label for="showTitle" class="form-label">Show Title</label>
+    <div class="toggle-container">
+        <input type="hidden" name="showTitle" value="false">
+        <input type="checkbox" id="showTitle" name="showTitle" class="toggle-checkbox" value="true" checked>
+        <label for="showTitle" class="toggle-label"></label>
+    </div>
+</div>
+
+<div class="form-group">
     <label for="fitMode" class="form-label">Display Mode</label>
     <select id="fitMode" name="fitMode" class="form-input">
         <option value="fit">Fit (Letterbox - Full image visible)</option>
@@ -49,6 +58,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const $toggle = document.getElementById('randomizeApod');
         const $date = document.getElementById('customDate');
+        const $showTitle = document.getElementById('showTitle');
         const $fitMode = document.getElementById('fitMode');
 
         const today = new Date().toISOString().split('T')[0];
@@ -58,12 +68,14 @@
             $toggle.value = pluginSettings.randomizeApod;
             $date.value = pluginSettings.customDate || today;
             $date.disabled = $toggle.checked;
+            $showTitle.checked = pluginSettings.showTitle !== 'false';
             $fitMode.value = pluginSettings.fitMode || 'fit';
             document.getElementById('autoRefresh').value = pluginSettings?.autoRefresh || '60';
         } else {
             $toggle.checked = false;
             $toggle.value = "false";
             $date.value = today;
+            $showTitle.checked = true;
             $fitMode.value = 'fit';
         }
     });

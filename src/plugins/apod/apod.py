@@ -113,9 +113,10 @@ class Apod(BasePlugin):
             logger.error("Failed to load APOD image")
             raise RuntimeError("Failed to load APOD image.")
 
-        # Add title overlay
+        # Add title overlay when enabled.
+        show_title = settings.get("showTitle", "true") != "false"
         title = data.get("title", "")
-        if title:
+        if show_title and title:
             # Clean up any HTML if present
             title = re.sub('<[^<]+?>', '', title)
             title = re.sub(r'&[a-zA-Z]+;', '', title)
