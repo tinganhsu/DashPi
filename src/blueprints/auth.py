@@ -59,3 +59,31 @@ def setup_password():
         return redirect(url_for('main.main_page'))
         
     return render_template('setup_password.html')
+
+@auth_bp.route('/change_password', methods=['POST'])
+def change_password():
+    """Change admin password. Requires current password."""
+    if not session.get('authenticated'):
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    device_config = current_app.config['DEVICE_CONFIG']
+    data = request.get_json() or {}
+    
+    current_pwd = data.get('current_password')
+    new_pwd = data.get('new_password')
+    confirm_pwd = data.get('confirm_password')
+    
+    if not current_pwd or not new_pwd or not confirm_pwd:
+        return jsonify({"error": "Missing required fields"}), 400
+        
+    if not device_config.check_password(current_pwd):
+        return jsonify({"error": "Incorrect current password"}), 400
+        
+    if new_pwd != confirm_pwd:
+        return jsonify({"error": "New passwords do not match"}), 400
+        
+    if len(new_pwd) < 4:
+        return jsonify({"error": "New password must be at least 4 characters"}), 400
+        
+    device_config.set_password(new_pwd)
+    return jsonify({"success": True, "message": "Password updated successfully"})

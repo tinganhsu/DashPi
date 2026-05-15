@@ -2,6 +2,17 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.1.4] — 2026-05-15
+
+UI enhancements and password management.
+
+### Added
+- **Change Password**: Added ability to change the administrator password from the Settings page.
+- **UI/UX Optimization**: Beautified login and setup password screens with a modern gradient design and interactive feedback.
+
+### Fixed
+- Fixed missing Flask imports in `dashpi.py` causing NameError on startup.
+
 ## [2.1.3] — 2026-05-15
 
 Security hardening release for Intranet environments.

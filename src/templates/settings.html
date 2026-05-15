@@ -507,6 +507,33 @@
             </div>
         </div>
 
+        <!-- Security Section -->
+        <div class="separator"></div>
+        <div class="form-group" style="padding: 0 16px;">
+            <label class="form-label" style="font-size: 1.1em; font-weight: bold;">Security</label>
+            <div style="display: flex; align-items: center; gap: 16px; margin-top: 4px; flex-wrap: wrap;">
+                <span style="opacity: 0.8;">Administrator password is set.</span>
+                <button type="button" class="header-button" onclick="togglePasswordForm()">Change Password</button>
+            </div>
+            <!-- Inline Password change form -->
+            <div id="passwordChangeForm" style="display: none; margin-top: 12px; padding: 12px; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); max-width: 400px;">
+                <div style="margin-bottom: 8px;">
+                    <input type="password" id="currentPassword" placeholder="Current Password" class="form-input">
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <input type="password" id="newPassword" placeholder="New Password" class="form-input">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <input type="password" id="confirmPassword" placeholder="Confirm New Password" class="form-input">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="header-button" onclick="changePassword()"
+                            style="background-color: #1abc9c; color: #fff;">Update Password</button>
+                    <button type="button" class="header-button" onclick="togglePasswordForm()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Backup & Restore Section -->
         <div class="separator"></div>
         <div class="form-group" style="padding: 0 16px;">
@@ -556,6 +583,53 @@
             if (includeEnv) params.set('include_env', 'true');
             if (includeImages) params.set('include_images', 'true');
             window.location.href = '/api/config/export?' + params.toString();
+        }
+
+        function togglePasswordForm() {
+            const form = document.getElementById('passwordChangeForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function changePassword() {
+            const current_password = document.getElementById('currentPassword').value;
+            const new_password = document.getElementById('newPassword').value;
+            const confirm_password = document.getElementById('confirmPassword').value;
+
+            if (!current_password || !new_password || !confirm_password) {
+                showResponseModal('failure', 'Please fill in all fields.');
+                return;
+            }
+
+            if (new_password !== confirm_password) {
+                showResponseModal('failure', 'New passwords do not match.');
+                return;
+            }
+
+            if (new_password.length < 4) {
+                showResponseModal('failure', 'New password must be at least 4 characters.');
+                return;
+            }
+
+            try {
+                const resp = await fetch("{{ url_for('auth.change_password') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ current_password, new_password, confirm_password })
+                });
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    showResponseModal('success', data.message);
+                    togglePasswordForm();
+                    document.getElementById('currentPassword').value = '';
+                    document.getElementById('newPassword').value = '';
+                    document.getElementById('confirmPassword').value = '';
+                } else {
+                    showResponseModal('failure', data.error || 'Failed to update password.');
+                }
+            } catch (err) {
+                showResponseModal('failure', 'Error updating password: ' + err.message);
+            }
         }
 
         async function importConfig() {
