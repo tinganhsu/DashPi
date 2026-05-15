@@ -32,6 +32,12 @@
         <option value="metric">Metric (°C)</option>
         <option value="standard">Standard (K)</option>
     </select>
+
+    <label for="displayLanguage" class="form-label">Display Language:</label>
+    <select id="displayLanguage" name="displayLanguage" class="form-input">
+        <option value="en">English</option>
+        <option value="zh-TW">正體中文</option>
+    </select>
 </div>
 
 <input type="hidden" id="locationName" name="locationName" value="" />
@@ -256,6 +262,7 @@
             document.getElementById('longitude').value = pluginSettings.longitude;
 
             document.getElementById('units').value = pluginSettings.units;
+            document.getElementById('displayLanguage').value = pluginSettings.displayLanguage || 'en';
 
             document.getElementById('displayRefreshTime').checked = pluginSettings.displayRefreshTime;
             document.getElementById('displayRefreshTime').value = pluginSettings.displayRefreshTime;
@@ -294,6 +301,7 @@
             document.getElementById('latitude').value = "32.7767";
             document.getElementById('longitude').value = "-96.7970";
             document.getElementById('units').value = "imperial";
+            document.getElementById('displayLanguage').value = "en";
             document.getElementById('displayRefreshTime').checked = true;
             document.getElementById('displayRefreshTime').value = "true";
             document.getElementById('displayMetrics').checked = true;

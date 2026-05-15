@@ -112,6 +112,33 @@ class TestWeather:
         assert plugin.get_weather_description(95) == "Thunderstorm"
         assert plugin.get_weather_description(999) == "Unknown"
 
+    def test_display_language_helpers(self, plugin):
+        from datetime import datetime
+        import pytz
+
+        assert plugin.get_display_language({"displayLanguage": "zh-TW"}) == "zh-TW"
+        assert plugin.get_display_language({"displayLanguage": "bad"}) == "en"
+        assert plugin.get_api_language("zh-TW") == "zh_tw"
+        assert plugin.localize_weather_description(0, "zh-TW") == "晴朗"
+
+        tz = pytz.timezone("Asia/Taipei")
+        dt = datetime(2026, 5, 15, 14, 30, tzinfo=tz)
+        assert plugin.localize_current_date(dt, "zh-TW") == "5月15日 週五"
+        assert plugin.localize_day_label(dt, "zh-TW") == "週五"
+        assert plugin.format_time(dt, "12h", display_language="zh-TW") == "下午2:30"
+
+    @patch("plugins.weather.weather.get_http_session")
+    def test_get_weather_data_includes_language(self, mock_session, plugin):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {}
+        mock_session.return_value.get.return_value = mock_response
+
+        plugin.get_weather_data("key", "metric", 1.0, 2.0, "zh_tw")
+
+        called_url = mock_session.return_value.get.call_args.args[0]
+        assert "&lang=zh_tw" in called_url
+
     def test_get_moon_phase_icon_path_north(self, plugin):
         path = plugin.get_moon_phase_icon_path("waxingcrescent", 32.0)
         assert "waxingcrescent" in path

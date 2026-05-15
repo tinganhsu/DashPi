@@ -2,6 +2,11 @@
 
 All notable changes to DashPi are documented here.
 
+## [Unreleased]
+
+### Added
+- **Weather plugin Traditional Chinese**: Added a display language setting to the Weather plugin settings page and localized weather copy, forecast labels, date formatting, OpenWeatherMap language selection, and geocoding titles for `zh-TW`.
+
 ## [2.1.6] — 2026-05-15
 
 Stability improvements for art museum plugin.

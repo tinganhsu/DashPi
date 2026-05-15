@@ -1,7 +1,7 @@
 """Weather plugin — renders a multi-panel weather dashboard with forecasts and moon phase."""
 
 from plugins.base_plugin.base_plugin import BasePlugin
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from utils.app_utils import get_font
 from utils.text_utils import get_text_dimensions, truncate_text
 from utils.layout_utils import draw_rounded_rect
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone, date
 from io import BytesIO
 import math
 from utils.http_client import get_http_session
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
         
@@ -66,6 +67,123 @@ OPEN_METEO_UNIT_PARAMS = {
     "imperial": "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
 }
 
+DISPLAY_LANGUAGE_SETTINGS = {
+    "en": {
+        "label": "English",
+        "owm_lang": "en",
+        "feels_like": "Feels Like",
+        "sunrise": "Sunrise",
+        "sunset": "Sunset",
+        "wind": "Wind",
+        "humidity": "Humidity",
+        "last_refresh": "Last refresh:",
+    },
+    "zh-TW": {
+        "label": "正體中文",
+        "owm_lang": "zh_tw",
+        "feels_like": "體感溫度",
+        "sunrise": "日出",
+        "sunset": "日落",
+        "wind": "風",
+        "humidity": "濕度",
+        "last_refresh": "最後更新：",
+    },
+}
+
+WEEKDAY_LABELS = {
+    "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "zh-TW": ["週一", "週二", "週三", "週四", "週五", "週六", "週日"],
+}
+
+OPEN_METEO_DESCRIPTIONS = {
+    "en": {
+        0: "Clear Sky",
+        1: "Mainly Clear",
+        2: "Partly Cloudy",
+        3: "Overcast",
+        45: "Foggy",
+        48: "Icy Fog",
+        51: "Light Drizzle",
+        53: "Moderate Drizzle",
+        55: "Heavy Drizzle",
+        56: "Light Freezing Drizzle",
+        57: "Freezing Drizzle",
+        61: "Light Rain",
+        63: "Moderate Rain",
+        65: "Heavy Rain",
+        66: "Light Freezing Rain",
+        67: "Freezing Rain",
+        71: "Light Snow",
+        73: "Moderate Snow",
+        75: "Heavy Snow",
+        77: "Snow Grains",
+        80: "Light Showers",
+        81: "Moderate Showers",
+        82: "Heavy Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with Light Hail",
+        99: "Thunderstorm with Heavy Hail",
+    },
+    "zh-TW": {
+        0: "晴朗",
+        1: "大致晴朗",
+        2: "局部多雲",
+        3: "陰天",
+        45: "有霧",
+        48: "結冰霧",
+        51: "小毛毛雨",
+        53: "中度毛毛雨",
+        55: "大毛毛雨",
+        56: "小凍毛毛雨",
+        57: "凍毛毛雨",
+        61: "小雨",
+        63: "中雨",
+        65: "大雨",
+        66: "小凍雨",
+        67: "凍雨",
+        71: "小雪",
+        73: "中雪",
+        75: "大雪",
+        77: "雪粒",
+        80: "小陣雨",
+        81: "中陣雨",
+        82: "大陣雨",
+        85: "小陣雪",
+        86: "大陣雪",
+        95: "雷雨",
+        96: "雷雨伴小冰雹",
+        99: "雷雨伴大冰雹",
+    },
+}
+
+SYSTEM_CJK_FONT_CANDIDATES = [
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/Supplemental/Songti.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/Library/Fonts/AppleGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-TC-Regular.otf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+    "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.otf",
+    "/usr/share/fonts/truetype/noto/NotoSansCJKtc-Regular.otf",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/truetype/arphic/ukai.ttc",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+]
+
+
+@lru_cache(maxsize=32)
+def _load_truetype_font(font_path, font_size):
+    return ImageFont.truetype(font_path, font_size)
+
 class Weather(BasePlugin):
     """Weather dashboard plugin supporting OpenWeatherMap (One Call v3) and Open-Meteo.
 
@@ -84,6 +202,59 @@ class Weather(BasePlugin):
         }
         template_params['style_settings'] = True
         return template_params
+
+    def get_display_language(self, settings):
+        language = settings.get("displayLanguage", "en")
+        if language not in DISPLAY_LANGUAGE_SETTINGS:
+            return "en"
+        return language
+
+    def get_api_language(self, display_language):
+        return DISPLAY_LANGUAGE_SETTINGS.get(display_language, DISPLAY_LANGUAGE_SETTINGS["en"])["owm_lang"]
+
+    def get_localized_text(self, key, display_language):
+        return DISPLAY_LANGUAGE_SETTINGS.get(display_language, DISPLAY_LANGUAGE_SETTINGS["en"]).get(
+            key,
+            DISPLAY_LANGUAGE_SETTINGS["en"].get(key, "")
+        )
+
+    def get_text_font(self, display_language, size, bold=False):
+        if display_language == "zh-TW":
+            return self.get_cjk_font(size, bold=bold)
+        return get_font("Jost", size, "bold" if bold else "normal")
+
+    def get_cjk_font(self, size, bold=False):
+        for font_path in SYSTEM_CJK_FONT_CANDIDATES:
+            if os.path.exists(font_path):
+                try:
+                    return _load_truetype_font(font_path, size)
+                except Exception as e:
+                    logger.debug(f"Failed to load CJK font {font_path}: {e}")
+                    continue
+        logger.warning("CJK font not found; falling back to Jost.")
+        return get_font("Jost", size, "bold" if bold else "normal")
+
+    def localize_current_date(self, dt, display_language):
+        if display_language == "zh-TW":
+            weekday = WEEKDAY_LABELS["zh-TW"][dt.weekday()]
+            return f"{dt.month}月{dt.day}日 {weekday}"
+        return dt.strftime("%A, %B %d")
+
+    def localize_day_label(self, dt, display_language):
+        if display_language == "zh-TW":
+            return WEEKDAY_LABELS["zh-TW"][dt.weekday()]
+        return dt.strftime("%a")
+
+    def localize_weather_description(self, weather_code, display_language):
+        descriptions = OPEN_METEO_DESCRIPTIONS.get(display_language, OPEN_METEO_DESCRIPTIONS["en"])
+        return descriptions.get(weather_code, "Unknown")
+
+    def localize_time_unit(self, dt, time_format, display_language):
+        if time_format == "24h":
+            return ""
+        if display_language == "zh-TW":
+            return "上午" if dt.hour < 12 else "下午"
+        return "" if time_format == "24h" else dt.strftime("%p")
 
     def generate_image(self, settings, device_config):
         """Fetch weather data and render the dashboard image."""
@@ -108,6 +279,7 @@ class Weather(BasePlugin):
 
         weather_provider = settings.get('weatherProvider', 'OpenWeatherMap')
         title = settings.get('locationName', '')
+        display_language = self.get_display_language(settings)
 
         import pytz
 
@@ -120,22 +292,22 @@ class Weather(BasePlugin):
                 api_key = device_config.load_env_key("OPEN_WEATHER_MAP_SECRET")
                 if not api_key:
                     raise RuntimeError("Open Weather Map API Key not configured.")
-                weather_data = self.get_weather_data(api_key, units, lat, long)
+                weather_data = self.get_weather_data(api_key, units, lat, long, self.get_api_language(display_language))
                 aqi_data = self.get_air_quality(api_key, lat, long)
                 if not title:
-                    title = self.get_location(api_key, lat, long)
+                    title = self.get_location(api_key, lat, long, display_language)
                 if settings.get('weatherTimeZone', 'locationTimeZone') == 'locationTimeZone':
                     logger.info("Using location timezone for OpenWeatherMap data.")
                     wtz = self.parse_timezone(weather_data)
-                    template_params = self.parse_weather_data(weather_data, aqi_data, wtz, units, time_format, lat)
+                    template_params = self.parse_weather_data(weather_data, aqi_data, wtz, units, time_format, lat, display_language)
                 else:
                     logger.info("Using configured timezone for OpenWeatherMap data.")
-                    template_params = self.parse_weather_data(weather_data, aqi_data, tz, units, time_format, lat)
+                    template_params = self.parse_weather_data(weather_data, aqi_data, tz, units, time_format, lat, display_language)
             elif weather_provider == "OpenMeteo":
                 forecast_days = 7
                 weather_data = self.get_open_meteo_data(lat, long, units, forecast_days + 1)
                 aqi_data = self.get_open_meteo_air_quality(lat, long)
-                template_params = self.parse_open_meteo_data(weather_data, aqi_data, tz, units, time_format, lat)
+                template_params = self.parse_open_meteo_data(weather_data, aqi_data, tz, units, time_format, lat, display_language)
             else:
                 raise RuntimeError(f"Unknown weather provider: {weather_provider}")
 
@@ -158,13 +330,13 @@ class Weather(BasePlugin):
             last_refresh_time = now.strftime("%Y-%m-%d %I:%M %p")
         template_params["last_refresh_time"] = last_refresh_time
 
-        image = self._render_pil(dimensions, template_params, settings)
+        image = self._render_pil(dimensions, template_params, settings, display_language)
 
         if not image:
             raise RuntimeError("Failed to generate weather image.")
         return image
 
-    def _render_pil(self, dimensions, data, settings):
+    def _render_pil(self, dimensions, data, settings, display_language="en"):
         """Render the complete weather dashboard as a PIL Image.
 
         Layout (horizontal): title/date header, current conditions (icon + temp
@@ -211,20 +383,20 @@ class Weather(BasePlugin):
         detail_value_size = int(min(height * 0.06, width * 0.07))
         forecast_size = int(min(height * 0.032, width * 0.032))
 
-        title_font = get_font("Jost", title_size, "bold")
-        date_font = get_font("Jost", date_size)
-        temp_font = get_font("Jost", temp_size, "bold")
-        label_font = get_font("Jost", label_size)
-        small_font = get_font("Jost", small_size)
-        detail_value_font = get_font("Jost", detail_value_size, "bold")
-        forecast_font = get_font("Jost", forecast_size, "bold")
-        forecast_temp_font = get_font("Jost", int(forecast_size * 0.9), "bold")
+        title_font = self.get_text_font(display_language, title_size, bold=True)
+        date_font = self.get_text_font(display_language, date_size)
+        temp_font = self.get_text_font(display_language, temp_size, bold=True)
+        label_font = self.get_text_font(display_language, label_size)
+        small_font = self.get_text_font(display_language, small_size)
+        detail_value_font = self.get_text_font(display_language, detail_value_size, bold=True)
+        forecast_font = self.get_text_font(display_language, forecast_size, bold=True)
+        forecast_temp_font = self.get_text_font(display_language, int(forecast_size * 0.9), bold=True)
 
         y = margin
 
         # Last refresh time (top right)
         if show_refresh:
-            refresh_text = f"Last refresh: {data.get('last_refresh_time', '')}"
+            refresh_text = f"{self.get_localized_text('last_refresh', display_language)} {data.get('last_refresh_time', '')}"
             rw = get_text_dimensions(draw, refresh_text, small_font)[0]
             draw.text((width - margin - rw, margin // 2), refresh_text, font=small_font, fill=text_color)
 
@@ -268,11 +440,11 @@ class Weather(BasePlugin):
             temp_w, temp_h = get_text_dimensions(draw, temp_text, temp_font)
             draw.text((tx, current_y), temp_text, font=temp_font, fill=text_color)
             # Unit superscript
-            unit_font = get_font("Jost", int(temp_size * 0.4), "bold")
+            unit_font = self.get_text_font(display_language, int(temp_size * 0.4), bold=True)
             draw.text((tx + temp_w + 2, current_y + int(temp_size * 0.15)), unit_text, font=unit_font, fill=text_color)
 
             detail_y = current_y + temp_h + 2
-            feels_text = f"Feels Like {data.get('feels_like', '--')}"
+            feels_text = f"{self.get_localized_text('feels_like', display_language)} {data.get('feels_like', '--')}"
             if data.get("units") != "standard":
                 feels_text += "\u00B0"
             draw.text((tx, detail_y), feels_text, font=label_font, fill=text_color)
@@ -296,13 +468,13 @@ class Weather(BasePlugin):
             temp_text = data.get("current_temperature", "--")
             unit_text = data.get("temperature_unit", "")
             temp_w, temp_h = get_text_dimensions(draw, temp_text, temp_font)
-            unit_font = get_font("Jost", int(temp_size * 0.4), "bold")
+            unit_font = self.get_text_font(display_language, int(temp_size * 0.4), bold=True)
             unit_w = get_text_dimensions(draw, unit_text, unit_font)[0]
             temp_row_w = temp_w + 4 + unit_w
 
             # Build detail lines
             detail_lines = []
-            feels_text = f"Feels Like {data.get('feels_like', '--')}"
+            feels_text = f"{self.get_localized_text('feels_like', display_language)} {data.get('feels_like', '--')}"
             if data.get("units") != "standard":
                 feels_text += "\u00B0"
             detail_lines.append(feels_text)
@@ -408,7 +580,7 @@ class Weather(BasePlugin):
                                 text_color, data.get("units", "metric"), show_moon)
 
         if data.get("alerts"):
-            self._draw_alert_banner(image, data["alerts"], width, height)
+            self._draw_alert_banner(image, data["alerts"], width, height, display_language)
 
         return image
 
@@ -594,7 +766,7 @@ class Weather(BasePlugin):
                 draw.text((moon_x + moon_size + 6, iy + 2), f"{moon_pct} %",
                           font=small_font, fill=text_color)
 
-    def _draw_alert_banner(self, image, alerts, width, height):
+    def _draw_alert_banner(self, image, alerts, width, height, display_language="en"):
         """Overlay a colored alert banner at the bottom of the image.
 
         Picks the highest-severity alert and draws a semi-transparent bar
@@ -633,14 +805,14 @@ class Weather(BasePlugin):
         image.paste(overlay, (0, banner_y), overlay)
 
         draw = ImageDraw.Draw(image)
-        font = get_font("Jost", max(int(height * 0.032), 12), "bold")
+        font = self.get_text_font(display_language, max(int(height * 0.032), 12), bold=True)
         text = f"\u26a0 {event_name.upper()}"
         if alert.get("until_str"):
             text += f"  \u2022  UNTIL {alert['until_str'].upper()}"
         tw, th = get_text_dimensions(draw, text, font)
         draw.text(((width - tw) // 2, banner_y + (banner_h - th) // 2), text, font=font, fill=(255, 255, 255))
 
-    def parse_weather_data(self, weather_data, aqi_data, tz, units, time_format, lat):
+    def parse_weather_data(self, weather_data, aqi_data, tz, units, time_format, lat, display_language="en"):
         """Parse OpenWeatherMap One Call v3 response into a normalized template dict.
 
         Returns a dict with keys: current_date, current_day_icon, current_temperature,
@@ -662,10 +834,12 @@ class Weather(BasePlugin):
             if current_icon.endswith('n'):
                 current_icon = current_icon.replace("n", "d")
         # Get weather description (e.g., "Partly cloudy", "Clear sky")
-        weather_description = weather_list[0].get("description", "").title()
+        weather_description = weather_list[0].get("description", "").strip()
+        if display_language == "en":
+            weather_description = weather_description.title()
 
         data = {
-            "current_date": dt.strftime("%A, %B %d"),
+            "current_date": self.localize_current_date(dt, display_language),
             "current_day_icon": self.get_plugin_dir(f'icons/{current_icon}.png'),
             "current_temperature": str(round(current["temp"])) if current.get("temp") is not None else "--",
             "feels_like": str(round(current["feels_like"])) if current.get("feels_like") is not None else "--",
@@ -674,10 +848,10 @@ class Weather(BasePlugin):
             "units": units,
             "time_format": time_format
         }
-        data['forecast'] = self.parse_forecast(weather_data.get('daily') or [], tz, current_suffix, lat)
-        data['data_points'] = self.parse_data_points(weather_data, aqi_data, tz, units, time_format)
+        data['forecast'] = self.parse_forecast(weather_data.get('daily') or [], tz, current_suffix, lat, display_language)
+        data['data_points'] = self.parse_data_points(weather_data, aqi_data, tz, units, time_format, display_language)
 
-        data['hourly_forecast'] = self.parse_hourly(weather_data.get('hourly') or [], tz, time_format, units, daily_forecast)
+        data['hourly_forecast'] = self.parse_hourly(weather_data.get('hourly') or [], tz, time_format, units, daily_forecast, display_language)
 
         alerts_raw = weather_data.get("alerts", [])
         parsed_alerts = []
@@ -689,14 +863,14 @@ class Weather(BasePlugin):
             if end_ts:
                 try:
                     end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc).astimezone(tz)
-                    alert["until_str"] = self.format_time(end_dt, time_format)
+                    alert["until_str"] = self.format_time(end_dt, time_format, display_language=display_language)
                 except Exception:
                     pass
             parsed_alerts.append(alert)
         data['alerts'] = parsed_alerts
         return data
 
-    def parse_open_meteo_data(self, weather_data, aqi_data, tz, units, time_format, lat):
+    def parse_open_meteo_data(self, weather_data, aqi_data, tz, units, time_format, lat, display_language="en"):
         """Parse Open-Meteo API response into the same normalized template dict as parse_weather_data()."""
         current = weather_data.get("current", {})
         daily = weather_data.get('daily', {})
@@ -708,10 +882,10 @@ class Weather(BasePlugin):
         temperature_conversion = 273.15 if units == "standard" else 0.
 
         # Get weather description from weather code
-        weather_description = self.get_weather_description(weather_code)
+        weather_description = self.localize_weather_description(weather_code, display_language)
 
         data = {
-            "current_date": dt.strftime("%A, %B %d"),
+            "current_date": self.localize_current_date(dt, display_language),
             "current_day_icon": self.get_plugin_dir(f'icons/{current_icon}.png'),
             "current_temperature": str(round(current.get("temperature", 0) + temperature_conversion)),
             "feels_like": str(round(current.get("apparent_temperature", current.get("temperature", 0)) + temperature_conversion)),
@@ -721,10 +895,10 @@ class Weather(BasePlugin):
             "time_format": time_format
         }
 
-        data['forecast'] = self.parse_open_meteo_forecast(weather_data.get('daily', {}), units, tz, is_day, lat)
-        data['data_points'] = self.parse_open_meteo_data_points(weather_data, aqi_data, units, tz, time_format)
+        data['forecast'] = self.parse_open_meteo_forecast(weather_data.get('daily', {}), units, tz, is_day, lat, display_language)
+        data['data_points'] = self.parse_open_meteo_data_points(weather_data, aqi_data, units, tz, time_format, display_language)
 
-        data['hourly_forecast'] = self.parse_open_meteo_hourly(weather_data.get('hourly', {}), units, tz, time_format, daily.get('sunrise', []), daily.get('sunset', []))
+        data['hourly_forecast'] = self.parse_open_meteo_hourly(weather_data.get('hourly', {}), units, tz, time_format, daily.get('sunrise', []), daily.get('sunset', []), display_language)
         data['alerts'] = []  # Open-Meteo does not provide weather alerts
         return data
 
@@ -789,37 +963,7 @@ class Weather(BasePlugin):
 
     def get_weather_description(self, weather_code):
         """Map Open-Meteo weather code to human-readable description."""
-        descriptions = {
-            0: "Clear Sky",
-            1: "Mainly Clear",
-            2: "Partly Cloudy",
-            3: "Overcast",
-            45: "Foggy",
-            48: "Icy Fog",
-            51: "Light Drizzle",
-            53: "Moderate Drizzle",
-            55: "Heavy Drizzle",
-            56: "Light Freezing Drizzle",
-            57: "Freezing Drizzle",
-            61: "Light Rain",
-            63: "Moderate Rain",
-            65: "Heavy Rain",
-            66: "Light Freezing Rain",
-            67: "Freezing Rain",
-            71: "Light Snow",
-            73: "Moderate Snow",
-            75: "Heavy Snow",
-            77: "Snow Grains",
-            80: "Light Showers",
-            81: "Moderate Showers",
-            82: "Heavy Showers",
-            85: "Light Snow Showers",
-            86: "Heavy Snow Showers",
-            95: "Thunderstorm",
-            96: "Thunderstorm with Light Hail",
-            99: "Thunderstorm with Heavy Hail"
-        }
-        return descriptions.get(weather_code, "Unknown")
+        return self.localize_weather_description(weather_code, "en")
 
     def get_moon_phase_icon_path(self, phase_name: str, lat: float) -> str:
         """Determines the path to the moon icon, inverting it if the location is in the Southern Hemisphere."""
@@ -840,7 +984,7 @@ class Weather(BasePlugin):
         
         return self.get_plugin_dir(f"icons/{phase_name}.png")
 
-    def parse_forecast(self, daily_forecast, tz, current_suffix, lat):
+    def parse_forecast(self, daily_forecast, tz, current_suffix, lat, display_language="en"):
         """
         - daily_forecast: list of daily entries from One‑Call v3 (each has 'dt', 'weather', 'temp', 'moon_phase')
         - tz: your target tzinfo (e.g. from zoneinfo or pytz)
@@ -891,7 +1035,7 @@ class Weather(BasePlugin):
 
                 # --- date & temps ---
                 dt = datetime.fromtimestamp(day["dt"], tz=timezone.utc).astimezone(tz)
-                day_label = dt.strftime("%a")
+                day_label = self.localize_day_label(dt, display_language)
 
                 forecast.append(
                     {
@@ -909,7 +1053,7 @@ class Weather(BasePlugin):
 
         return forecast
         
-    def parse_open_meteo_forecast(self, daily_data, units, tz, is_day, lat):
+    def parse_open_meteo_forecast(self, daily_data, units, tz, is_day, lat, display_language="en"):
         """
         Parse the daily forecast from Open-Meteo API and calculate moon phase and illumination using the local 'astral' library.
         """
@@ -930,7 +1074,7 @@ class Weather(BasePlugin):
 
         for i in range(len(times)):
             dt = datetime.fromisoformat(times[i]).replace(tzinfo=timezone.utc).astimezone(tz)
-            day_label = dt.strftime("%a")
+            day_label = self.localize_day_label(dt, display_language)
 
             code = weather_codes[i] if i < len(weather_codes) else 0
             weather_icon = self.map_weather_code_to_icon(code, is_day=1)
@@ -960,7 +1104,7 @@ class Weather(BasePlugin):
 
         return forecast
 
-    def parse_hourly(self, hourly_forecast, tz, time_format, units, daily_forecast):
+    def parse_hourly(self, hourly_forecast, tz, time_format, units, daily_forecast, display_language="en"):
         hourly = []
         icon_codes_to_preserve = ["01", "02", "10"]
         
@@ -989,7 +1133,7 @@ class Weather(BasePlugin):
             else:
                 precip_value = total_precip_mm 
             hour_forecast = {
-                "time": self.format_time(dt, time_format, hour_only=True),
+                "time": self.format_time(dt, time_format, hour_only=True, display_language=display_language),
                 "temperature": int(hour["temp"]) if hour.get("temp") is not None else 0,
                 "precipitation": hour.get("pop"),
                 "rain": round(precip_value, 2),
@@ -998,7 +1142,7 @@ class Weather(BasePlugin):
             hourly.append(hour_forecast)
         return hourly
 
-    def parse_open_meteo_hourly(self, hourly_data, units, tz, time_format, sunrises, sunsets):
+    def parse_open_meteo_hourly(self, hourly_data, units, tz, time_format, sunrises, sunsets, display_language="en"):
         hourly = []
         times = hourly_data.get('time', [])
         temperatures = hourly_data.get('temperature_2m', [])
@@ -1043,7 +1187,7 @@ class Weather(BasePlugin):
             code = sliced_codes[i] if i < len(sliced_codes) else 0
             icon_name = self.map_weather_code_to_icon(code, is_day)
             hour_forecast = {
-                "time": self.format_time(dt, time_format, True),
+                "time": self.format_time(dt, time_format, True, display_language=display_language),
                 "temperature": int(sliced_temperatures[i]) if i < len(sliced_temperatures) else 0,
                 "precipitation": (sliced_precipitation_probabilities[i] / 100) if i < len(sliced_precipitation_probabilities) else 0,
                 "rain": (sliced_rain[i]) if i < len(sliced_rain) else 0,
@@ -1052,7 +1196,7 @@ class Weather(BasePlugin):
             hourly.append(hour_forecast)
         return hourly
 
-    def parse_data_points(self, weather, air_quality, tz, units, time_format):
+    def parse_data_points(self, weather, air_quality, tz, units, time_format, display_language="en"):
         """Extract current metric data points (sunrise, sunset, wind, humidity) from OWM data.
 
         Returns a list of dicts with keys: label, measurement, unit, icon, and optional arrow.
@@ -1063,9 +1207,14 @@ class Weather(BasePlugin):
         if sunrise_epoch:
             sunrise_dt = datetime.fromtimestamp(sunrise_epoch, tz=timezone.utc).astimezone(tz)
             data_points.append({
-                "label": "Sunrise",
-                "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
+                "label": self.get_localized_text("sunrise", display_language),
+                "measurement": self.format_time(
+                    sunrise_dt,
+                    time_format,
+                    include_am_pm=(display_language == "zh-TW"),
+                    display_language=display_language,
+                ),
+                "unit": "" if time_format == "24h" or display_language == "zh-TW" else sunrise_dt.strftime('%p'),
                 "icon": self.get_plugin_dir('icons/sunrise.png')
             })
         else:
@@ -1075,9 +1224,14 @@ class Weather(BasePlugin):
         if sunset_epoch:
             sunset_dt = datetime.fromtimestamp(sunset_epoch, tz=timezone.utc).astimezone(tz)
             data_points.append({
-                "label": "Sunset",
-                "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
+                "label": self.get_localized_text("sunset", display_language),
+                "measurement": self.format_time(
+                    sunset_dt,
+                    time_format,
+                    include_am_pm=(display_language == "zh-TW"),
+                    display_language=display_language,
+                ),
+                "unit": "" if time_format == "24h" or display_language == "zh-TW" else sunset_dt.strftime('%p'),
                 "icon": self.get_plugin_dir('icons/sunset.png')
             })
         else:
@@ -1086,7 +1240,7 @@ class Weather(BasePlugin):
         wind_deg = weather.get('current', {}).get("wind_deg", 0)
         wind_arrow = self.get_wind_arrow(wind_deg)
         data_points.append({
-            "label": "Wind",
+            "label": self.get_localized_text("wind", display_language),
             "measurement": weather.get('current', {}).get("wind_speed"),
             "unit": UNITS[units]["speed"],
             "icon": self.get_plugin_dir('icons/wind.png'),
@@ -1094,7 +1248,7 @@ class Weather(BasePlugin):
         })
 
         data_points.append({
-            "label": "Humidity",
+            "label": self.get_localized_text("humidity", display_language),
             "measurement": weather.get('current', {}).get("humidity"),
             "unit": '%',
             "icon": self.get_plugin_dir('icons/humidity.png')
@@ -1102,7 +1256,7 @@ class Weather(BasePlugin):
 
         return data_points
 
-    def parse_open_meteo_data_points(self, weather_data, aqi_data, units, tz, time_format):
+    def parse_open_meteo_data_points(self, weather_data, aqi_data, units, tz, time_format, display_language="en"):
         """Parses current data points from Open-Meteo API response."""
         data_points = []
         daily_data = weather_data.get('daily', {})
@@ -1116,9 +1270,14 @@ class Weather(BasePlugin):
         if sunrise_times:
             sunrise_dt = datetime.fromisoformat(sunrise_times[0]).astimezone(tz)
             data_points.append({
-                "label": "Sunrise",
-                "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
+                "label": self.get_localized_text("sunrise", display_language),
+                "measurement": self.format_time(
+                    sunrise_dt,
+                    time_format,
+                    include_am_pm=(display_language == "zh-TW"),
+                    display_language=display_language,
+                ),
+                "unit": "" if time_format == "24h" or display_language == "zh-TW" else sunrise_dt.strftime('%p'),
                 "icon": self.get_plugin_dir('icons/sunrise.png')
             })
         else:
@@ -1129,9 +1288,14 @@ class Weather(BasePlugin):
         if sunset_times:
             sunset_dt = datetime.fromisoformat(sunset_times[0]).astimezone(tz)
             data_points.append({
-                "label": "Sunset",
-                "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
+                "label": self.get_localized_text("sunset", display_language),
+                "measurement": self.format_time(
+                    sunset_dt,
+                    time_format,
+                    include_am_pm=(display_language == "zh-TW"),
+                    display_language=display_language,
+                ),
+                "unit": "" if time_format == "24h" or display_language == "zh-TW" else sunset_dt.strftime('%p'),
                 "icon": self.get_plugin_dir('icons/sunset.png')
             })
         else:
@@ -1143,7 +1307,7 @@ class Weather(BasePlugin):
         wind_arrow = self.get_wind_arrow(wind_deg)
         wind_unit = UNITS[units]["speed"]
         data_points.append({
-            "label": "Wind", "measurement": wind_speed, "unit": wind_unit,
+            "label": self.get_localized_text("wind", display_language), "measurement": wind_speed, "unit": wind_unit,
             "icon": self.get_plugin_dir('icons/wind.png'), "arrow": wind_arrow
         })
 
@@ -1161,7 +1325,7 @@ class Weather(BasePlugin):
                 logger.warning(f"Could not parse time string {time_str} for humidity.")
                 continue
         data_points.append({
-            "label": "Humidity", "measurement": current_humidity, "unit": '%',
+            "label": self.get_localized_text("humidity", display_language), "measurement": current_humidity, "unit": '%',
             "icon": self.get_plugin_dir('icons/humidity.png')
         })
 
@@ -1191,8 +1355,8 @@ class Weather(BasePlugin):
 
         return "↑"
 
-    def get_weather_data(self, api_key, units, lat, long):
-        url = WEATHER_URL.format(lat=lat, long=long, units=units, api_key=api_key)
+    def get_weather_data(self, api_key, units, lat, long, lang="en"):
+        url = WEATHER_URL.format(lat=lat, long=long, units=units, api_key=api_key) + f"&lang={lang}"
         session = get_http_session()
         response = session.get(url, timeout=30)
         if not 200 <= response.status_code < 300:
@@ -1212,7 +1376,7 @@ class Weather(BasePlugin):
 
         return response.json()
 
-    def get_location(self, api_key, lat, long):
+    def get_location(self, api_key, lat, long, display_language="en"):
         url = GEOCODING_URL.format(lat=lat, long=long, api_key=api_key)
         session = get_http_session()
         response = session.get(url, timeout=30)
@@ -1226,7 +1390,17 @@ class Weather(BasePlugin):
             logger.warning("Geocoding returned empty results, using coordinates as location")
             return f"{lat}, {long}"
         location_data = location_list[0]
-        location_str = f"{location_data.get('name')}, {location_data.get('state', location_data.get('country'))}"
+        location_name = location_data.get("name")
+        local_names = location_data.get("local_names") or {}
+        if display_language == "zh-TW":
+            location_name = (
+                local_names.get("zh_tw")
+                or local_names.get("zh")
+                or local_names.get("zh_hant")
+                or location_name
+            )
+
+        location_str = f"{location_name}, {location_data.get('state', location_data.get('country'))}"
 
         return location_str
 
@@ -1252,11 +1426,20 @@ class Weather(BasePlugin):
 
         return response.json()
     
-    def format_time(self, dt, time_format, hour_only=False, include_am_pm=True):
-        """Format datetime based on 12h or 24h preference"""
+    def format_time(self, dt, time_format, hour_only=False, include_am_pm=True, display_language="en"):
+        """Format datetime based on 12h or 24h preference."""
         if time_format == "24h":
             return dt.strftime("%H:00" if hour_only else "%H:%M")
-        
+
+        if display_language == "zh-TW":
+            hour = dt.hour % 12
+            if hour == 0:
+                hour = 12
+            period = "上午" if dt.hour < 12 else "下午"
+            if hour_only:
+                return f"{period}{hour}"
+            return f"{period}{hour}:{dt.minute:02d}"
+
         if include_am_pm:
             fmt = "%I %p" if hour_only else "%I:%M %p"
         else:
