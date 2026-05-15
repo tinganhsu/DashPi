@@ -2,6 +2,14 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.1.5] — 2026-05-15
+
+WiFi connectivity improvements.
+
+### Added
+- **wpa_cli Fallback**: Added `wpa_cli` as a fallback mechanism for WiFi scanning when `nmcli` (NetworkManager) is unavailable. This improves compatibility with DietPi and other minimal Linux distributions.
+- **Signal Strength Conversion**: Implemented dBm to percentage conversion for consistent UI display across different WiFi tools.
+
 ## [2.1.4] — 2026-05-15
 
 UI enhancements and password management.

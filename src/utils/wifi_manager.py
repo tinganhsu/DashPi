@@ -59,6 +59,36 @@ def _run_nmcli(args, timeout=15):
         return False, "nmcli not found"
 
 
+def _run_wpa_cli(args, timeout=10):
+    """Run a wpa_cli command and return (success, stdout)."""
+    cmd = ["wpa_cli"] + args
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        else:
+            return False, result.stderr.strip()
+    except Exception as e:
+        logger.error("wpa_cli failed: %s", e)
+        return False, str(e)
+
+
+def _dbm_to_percent(dbm):
+    """Convert dBm signal strength to a 0-100 percentage."""
+    try:
+        dbm = int(dbm)
+        if dbm <= -100:
+            return 0
+        elif dbm >= -50:
+            return 100
+        else:
+            return 2 * (dbm + 100)
+    except (ValueError, TypeError):
+        return 0
+
+
 class WifiManager:
     """Manages WiFi connectivity, AP hotspot mode, and network provisioning.
 
@@ -130,31 +160,68 @@ class WifiManager:
             ]
 
         # Force a fresh scan first
-        _run_nmcli(["dev", "wifi", "rescan"], timeout=10)
-        time.sleep(2)  # Give scan time to complete
+        success, output = _run_nmcli(["dev", "wifi", "rescan"], timeout=10)
+        
+        if success:
+            time.sleep(2)  # Give scan time to complete
+            success, output = _run_nmcli(
+                ["-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"]
+            )
+            
+            if success:
+                networks = []
+                seen_ssids = set()
+                for line in output.splitlines():
+                    parts = line.split(":")
+                    if len(parts) < 3:
+                        continue
+                    ssid = parts[0].strip()
+                    if not ssid or ssid in seen_ssids:
+                        continue
+                    seen_ssids.add(ssid)
+                    try:
+                        signal = int(parts[1])
+                    except ValueError:
+                        signal = 0
+                    security = parts[2].strip()
+                    networks.append({
+                        "ssid": ssid,
+                        "signal": signal,
+                        "security": security,
+                    })
+                networks.sort(key=lambda n: n["signal"], reverse=True)
+                return networks
 
-        success, output = _run_nmcli(
-            ["-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"]
-        )
+        # Fallback to wpa_cli if nmcli fails or is missing
+        logger.info("nmcli scan failed or unavailable, falling back to wpa_cli")
+        _run_wpa_cli(["-i", "wlan0", "scan"])
+        time.sleep(2)
+        success, output = _run_wpa_cli(["-i", "wlan0", "scan_results"])
+        
         if not success:
-            logger.error("WiFi scan failed: %s", output)
+            logger.error("WiFi scan failed for both nmcli and wpa_cli")
             return []
 
         networks = []
         seen_ssids = set()
-        for line in output.splitlines():
-            parts = line.split(":")
-            if len(parts) < 3:
+        # wpa_cli output header: bssid / frequency / signal level / flags / ssid
+        for line in output.splitlines()[1:]:  # Skip header
+            parts = line.split("\t")
+            if len(parts) < 5:
                 continue
-            ssid = parts[0].strip()
+            
+            ssid = parts[4].strip()
             if not ssid or ssid in seen_ssids:
                 continue
             seen_ssids.add(ssid)
-            try:
-                signal = int(parts[1])
-            except ValueError:
-                signal = 0
-            security = parts[2].strip()
+            
+            signal = _dbm_to_percent(parts[2])
+            flags = parts[3]
+            security = ""
+            if "WPA3" in flags: security = "WPA3"
+            elif "WPA2" in flags: security = "WPA2"
+            elif "WPA" in flags: security = "WPA"
+            
             networks.append({
                 "ssid": ssid,
                 "signal": signal,
