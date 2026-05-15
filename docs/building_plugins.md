@@ -83,7 +83,7 @@ If your plugin requires user configuration through the web UI, you'll need to de
 DashPi supports multiple display types. Plugins should be display-agnostic:
 
 - **Do not hardcode pixel dimensions.** Use `device_config.get_config("resolution")` to get the display size and scale your layout proportionally.
-- **All 24 built-in plugins** work across LCD, Inky e-paper, and Waveshare e-paper displays without modification.
+- **All 25 built-in plugins** work across LCD, Inky e-paper, and Waveshare e-paper displays without modification.
 - Plugins can check display capabilities via the `device_config` if needed, but this should rarely be necessary.
 
 ## Test Your Plugin

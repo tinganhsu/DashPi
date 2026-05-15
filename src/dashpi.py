@@ -30,6 +30,7 @@ from blueprints.plugin import plugin_bp
 from blueprints.apikeys import apikeys_bp
 from blueprints.loops import loops_bp
 from blueprints.wifi import wifi_bp
+from plugins.pluginmanager.api import plugin_manage_bp
 from jinja2 import ChoiceLoader, FileSystemLoader
 from plugins.plugin_registry import load_plugins
 from waitress import serve
@@ -93,6 +94,7 @@ app.register_blueprint(plugin_bp)
 app.register_blueprint(apikeys_bp)
 app.register_blueprint(loops_bp)
 app.register_blueprint(wifi_bp)
+app.register_blueprint(plugin_manage_bp)
 
 # Inject project_name and version into all templates
 @app.context_processor

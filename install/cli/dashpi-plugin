@@ -10,7 +10,8 @@ usage() {
     echo ""
     echo "Plugin commands:"
     echo "  dashpi plugin install <plugin_id> <git_repository_url>"
-    echo "  dashpi plugin remove <plugin_id>"
+    echo "  dashpi plugin install-from-url <git_repository_url>"
+    echo "  dashpi plugin uninstall <plugin_id>"
     echo "  dashpi plugin list"
     echo ""
 }
@@ -37,15 +38,13 @@ install_plugin() {
 
     require_plugins_dir
 
-    # Workaround for .pyc files created by dashpi app with sudo
+    echo "[INFO] Installing plugin '$PLUGIN_ID' from $REPO_URL"
+
     if [[ -d "$DEST_DIR" ]]; then
         sudo chown -R "$(whoami)":"$(whoami)" "$DEST_DIR" 2>/dev/null || true
         chmod -R u+rw "$DEST_DIR" 2>/dev/null || true
+        rm -rf "$DEST_DIR"
     fi
-
-    echo "[INFO] Installing plugin '$PLUGIN_ID' from $REPO_URL"
-
-    rm -rf "$DEST_DIR"
     mkdir -p "$DEST_DIR"
 
     git clone --depth 1 --filter=blob:none --sparse "$REPO_URL" "$DEST_DIR" &>/dev/null
@@ -68,30 +67,90 @@ install_plugin() {
 
     echo "[INFO] Plugin copied to $DEST_DIR"
 
+    if [[ -f "$DEST_DIR/plugin-info.json" ]] && command -v jq &>/dev/null; then
+        jq --arg url "$REPO_URL" '.repository = $url' "$DEST_DIR/plugin-info.json" > "$DEST_DIR/plugin-info.json.tmp" && mv "$DEST_DIR/plugin-info.json.tmp" "$DEST_DIR/plugin-info.json"
+    fi
+
     # Install requirements if any
     REQ_FILE="$DEST_DIR/requirements.txt"
 
     if [[ -f "$REQ_FILE" ]]; then
         echo "[INFO] requirements.txt found, installing dependencies..."
 
-        if [[ ! -d "$VENV_PATH" ]]; then
-            echo "[ERROR] Virtual environment not found at $VENV_PATH"
-            exit 1
+        if [[ -n "${VENV_PATH:-}" ]] && [[ -d "$VENV_PATH" ]]; then
+            source "$VENV_PATH/bin/activate"
+            pip install -r "$REQ_FILE"
+            deactivate
+            echo "[INFO] Dependencies installed"
+        else
+            echo "[INFO] requirements.txt found but VENV_PATH not set or missing, skipping dependency install"
         fi
-
-        source "$VENV_PATH/bin/activate"
-        pip install -r "$REQ_FILE"
-        deactivate
-
-        echo "[INFO] Dependencies installed"
     else
         echo "[INFO] No requirements.txt found, skipping dependency install"
     fi
 
-    echo "[INFO] Restarting $APPNAME service."
-    sudo systemctl restart "$APPNAME.service"
-
     echo "[INFO] Done"
+    if [[ -n "${APPNAME:-}" ]]; then
+        echo "[INFO] Restarting $APPNAME service in 3 seconds."
+        sleep 3
+        sudo systemctl restart "$APPNAME.service"
+    else
+        echo "[INFO] APPNAME not set, skipping service restart"
+    fi
+}
+
+# ----------------------------
+# INSTALL FROM URL
+# ----------------------------
+install_from_url() {
+    if [[ $# -ne 1 ]]; then
+        usage
+        exit 1
+    fi
+
+    REPO_URL="$1"
+    require_plugins_dir
+
+    if ! command -v jq &>/dev/null; then
+        echo "[ERROR] jq is required for install-from-url. Please install jq."
+        exit 1
+    fi
+
+    TMP_DIR="$(mktemp -d)"
+    trap 'rm -rf "$TMP_DIR"' EXIT
+
+    echo "[INFO] Cloning repository to discover plugin..."
+    if ! git clone --depth 1 "$REPO_URL" "$TMP_DIR" &>/dev/null; then
+        echo "[ERROR] Failed to clone repository: $REPO_URL"
+        exit 1
+    fi
+
+    PLUGIN_FOLDER=""
+    FOUND_COUNT=0
+    for dir in "$TMP_DIR"/*; do
+        [[ -d "$dir" ]] || continue
+        dirname="$(basename "$dir")"
+        [[ "$dirname" == ".git" ]] && continue
+        if [[ -f "$dir/plugin-info.json" ]]; then
+            PLUGIN_ID="$(jq -r '.id // empty' "$dir/plugin-info.json")"
+            if [[ -n "$PLUGIN_ID" ]] && [[ "$PLUGIN_ID" == "$dirname" ]]; then
+                PLUGIN_FOLDER="$dirname"
+                (( FOUND_COUNT++ )) || true
+            fi
+        fi
+    done
+
+    if [[ $FOUND_COUNT -eq 0 ]]; then
+        echo "[ERROR] No valid DashPi plugin found in repository (need a folder containing plugin-info.json with id matching the folder name)"
+        exit 1
+    fi
+
+    if [[ $FOUND_COUNT -gt 1 ]]; then
+        echo "[ERROR] Multiple plugin folders found in repository; use 'install <plugin_id> <url>' to specify one"
+        exit 1
+    fi
+
+    install_plugin "$PLUGIN_FOLDER" "$REPO_URL"
 }
 
 # ----------------------------
@@ -120,8 +179,14 @@ uninstall_plugin() {
 
     echo "[INFO] Plugin successfully uninstalled"
 
-    echo "[INFO] Restarting $APPNAME service."
-    sudo systemctl restart "$APPNAME.service"
+    echo "[INFO] Done"
+    if [[ -n "${APPNAME:-}" ]]; then
+        echo "[INFO] Restarting $APPNAME service in 3 seconds."
+        sleep 3
+        sudo systemctl restart "$APPNAME.service"
+    else
+        echo "[INFO] APPNAME not set, skipping service restart"
+    fi
 }
 
 # ----------------------------
@@ -164,6 +229,9 @@ list_plugins() {
 case "$command" in
     install)
         install_plugin "$@"
+        ;;
+    install-from-url)
+        install_from_url "$@"
         ;;
     uninstall)
         uninstall_plugin "$@"

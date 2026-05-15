@@ -75,3 +75,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## Plugin Manager
+The built-in Plugin Manager is adapted for DashPi from [InkyPi-Plugin-PluginManager](https://github.com/RobinWts/InkyPi-Plugin-PluginManager) by [RobinWts](https://github.com/RobinWts). The upstream project is licensed under GNU General Public License v3.0.
