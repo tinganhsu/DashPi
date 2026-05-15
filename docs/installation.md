@@ -32,3 +32,28 @@
 </p>
 
 4. Click Yes to apply OS customization options and confirm
+
+## Installing DashPi
+
+Clone DashPi and run the installer:
+
+```bash
+git clone https://github.com/SHagler2/DashPi.git
+cd DashPi
+sudo bash install/install.sh
+```
+
+For a Waveshare e-paper display, install with the Waveshare driver name:
+
+```bash
+sudo bash install/install.sh -W epd7in3f
+```
+
+The `-W` option downloads the matching Waveshare driver into
+`src/display/waveshare_epd/`, installs the e-paper GPIO dependencies, enables
+the SPI interface, and writes `"display_type": "epd7in3f"` into
+`src/config/device.json`.
+
+If you already installed DashPi without `-W`, you do not need to reinstall from
+scratch. Stop the service, download the driver, set `display_type`, verify the
+SPI overlay, reboot, and start DashPi again.

@@ -5,7 +5,10 @@
 # Description: This script automates the installation of DashPi and creation of
 #              the DashPi service.
 #
-# Usage: ./install.sh
+# Usage: ./install.sh [-W <waveshare_device>]
+#        -W <waveshare_device> (optional) Install for a Waveshare e-paper
+#                               device, specifying the driver model name,
+#                               e.g. epd7in3f.
 # =============================================================================
 
 # Formatting stuff
@@ -40,11 +43,64 @@ SERVICE_FILE_TARGET="/etc/systemd/system/$SERVICE_FILE"
 
 APT_REQUIREMENTS_FILE="$SCRIPT_DIR/debian-requirements.txt"
 PIP_REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
+WS_TYPE=""
+WS_REQUIREMENTS_FILE="$SCRIPT_DIR/ws-requirements.txt"
+
+parse_arguments() {
+  while getopts ":W:" opt; do
+    case $opt in
+      W)
+        WS_TYPE=$OPTARG
+        echo "Optional Waveshare support enabled. Screen type is: $WS_TYPE"
+        ;;
+      \?)
+        echo "Invalid option: -$OPTARG." >&2
+        exit 1
+        ;;
+      :)
+        echo "Option -$OPTARG requires the model type of the Waveshare screen." >&2
+        exit 1
+        ;;
+    esac
+  done
+}
 
 check_permissions() {
   # Ensure the script is run with sudo
   if [ "$EUID" -ne 0 ]; then
     echo_error "ERROR: Installation requires root privileges. Please run it with sudo."
+    exit 1
+  fi
+}
+
+fetch_waveshare_driver() {
+  echo "Fetching Waveshare driver for: $WS_TYPE"
+
+  DRIVER_DEST="$SRC_PATH/display/waveshare_epd"
+  DRIVER_FILE="$DRIVER_DEST/$WS_TYPE.py"
+  DRIVER_URL="https://raw.githubusercontent.com/waveshareteam/e-Paper/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd/$WS_TYPE.py"
+
+  mkdir -p "$DRIVER_DEST"
+
+  if [ -f "$DRIVER_FILE" ]; then
+    echo_success "\tWaveshare driver '$WS_TYPE.py' already exists at $DRIVER_FILE"
+  elif curl --silent --fail -o "$DRIVER_FILE" "$DRIVER_URL"; then
+    echo_success "\tWaveshare driver '$WS_TYPE.py' successfully downloaded to $DRIVER_FILE"
+  else
+    echo_error "ERROR: Failed to download Waveshare driver '$WS_TYPE.py'."
+    echo_error "Ensure the model name is correct and exists at:"
+    echo_error "https://github.com/waveshareteam/e-Paper/tree/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd"
+    exit 1
+  fi
+
+  EPD_CONFIG_FILE="$DRIVER_DEST/epdconfig.py"
+  EPD_CONFIG_URL="https://raw.githubusercontent.com/waveshareteam/e-Paper/refs/heads/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd/epdconfig.py"
+  if [ -f "$EPD_CONFIG_FILE" ]; then
+    echo_success "\tWaveshare epdconfig file already exists at $EPD_CONFIG_FILE"
+  elif curl --silent --fail -o "$EPD_CONFIG_FILE" "$EPD_CONFIG_URL"; then
+    echo_success "\tWaveshare epdconfig file successfully downloaded to $EPD_CONFIG_FILE"
+  else
+    echo_error "ERROR: Failed to download Waveshare epdconfig file."
     exit 1
   fi
 }
@@ -207,9 +263,8 @@ create_venv(){
   fi
 
   # Install Waveshare e-paper GPIO dependencies if ws-requirements.txt exists
-  WS_REQUIREMENTS="$SCRIPT_DIR/ws-requirements.txt"
-  if [ -f "$WS_REQUIREMENTS" ]; then
-    $VENV_PATH/bin/python -m pip install --no-cache-dir -r $WS_REQUIREMENTS -qq > /dev/null 2>&1 &
+  if [ -f "$WS_REQUIREMENTS_FILE" ]; then
+    $VENV_PATH/bin/python -m pip install --no-cache-dir -r $WS_REQUIREMENTS_FILE -qq > /dev/null 2>&1 &
     show_loader "\tInstalling e-paper display dependencies. "
   fi
 }
@@ -336,6 +391,22 @@ install_config() {
   fi
 }
 
+update_config() {
+  if [[ -n "$WS_TYPE" ]]; then
+    local DEVICE_JSON="$CONFIG_DIR/device.json"
+
+    if grep -q '"display_type":' "$DEVICE_JSON"; then
+      sed -i "s/\"display_type\": \".*\"/\"display_type\": \"$WS_TYPE\"/" "$DEVICE_JSON"
+      echo_success "\tUpdated display_type to $WS_TYPE"
+    else
+      sed -i '$s/}/,/' "$DEVICE_JSON"
+      echo "    \"display_type\": \"$WS_TYPE\"" >> "$DEVICE_JSON"
+      echo "}" >> "$DEVICE_JSON"
+      echo_success "\tAdded display_type $WS_TYPE"
+    fi
+  fi
+}
+
 stop_service() {
     echo "Checking if $SERVICE_FILE is running"
     if /usr/bin/systemctl is-active --quiet $SERVICE_FILE
@@ -441,24 +512,36 @@ enable_interfaces() {
     echo_success "\tSPI already enabled"
   fi
 
-  # Add spi0-0cs overlay to prevent kernel from claiming the SPI chip select pin.
-  # Required for Inky e-paper displays on newer kernels (6.x+).
+  # Add the SPI chip-select overlay needed by the selected e-paper family.
   CONFIG_TXT="/boot/firmware/config.txt"
   if [ ! -f "$CONFIG_TXT" ]; then
     CONFIG_TXT="/boot/config.txt"
   fi
   if [ -f "$CONFIG_TXT" ]; then
-    if ! grep -q "spi0-0cs" "$CONFIG_TXT"; then
-      echo "dtoverlay=spi0-0cs" >> "$CONFIG_TXT"
-      echo_success "\tAdded spi0-0cs overlay for e-paper compatibility"
+    if [[ -n "$WS_TYPE" ]]; then
+      if ! grep -q "spi0-2cs" "$CONFIG_TXT"; then
+        echo "dtoverlay=spi0-2cs" >> "$CONFIG_TXT"
+        echo_success "\tAdded spi0-2cs overlay for Waveshare e-paper compatibility"
+      else
+        echo_success "\tspi0-2cs overlay already configured"
+      fi
     else
-      echo_success "\tspi0-0cs overlay already configured"
+      if ! grep -q "spi0-0cs" "$CONFIG_TXT"; then
+        echo "dtoverlay=spi0-0cs" >> "$CONFIG_TXT"
+        echo_success "\tAdded spi0-0cs overlay for e-paper compatibility"
+      else
+        echo_success "\tspi0-0cs overlay already configured"
+      fi
     fi
   fi
 }
 
+parse_arguments "$@"
 check_permissions
 stop_service
+if [[ -n "$WS_TYPE" ]]; then
+  fetch_waveshare_driver
+fi
 enable_interfaces
 install_debian_dependencies
 # check OS version for Bookworm to setup zramswap
@@ -475,6 +558,7 @@ install_cli
 create_venv
 install_executable
 install_config
+update_config
 install_app_service
 setup_clean_boot
 setup_persistent_journal

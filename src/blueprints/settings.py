@@ -287,12 +287,30 @@ def download_logs():
             hours = 2
         since = datetime.now() - timedelta(hours=hours)
 
-        if not JOURNAL_AVAILABLE:
-            # Return a message when running in development mode without systemd
-            buffer.write(f"Log download not available in development mode (cysystemd not installed).\n")
-            buffer.write(f"Logs would normally show DashPi service logs from the last {hours} hours.\n")
-            buffer.write(f"\nTo see Flask development logs, check your terminal output.\n")
-        else:
+        journalctl_error = None
+
+        try:
+            result = subprocess.run(
+                [
+                    "journalctl",
+                    "--no-pager",
+                    "--output=short",
+                    "--since", since.strftime("%Y-%m-%d %H:%M:%S"),
+                    "--unit", "dashpi.service",
+                    "--unit", "inkypi.service",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout:
+                buffer.write(result.stdout)
+            elif result.stderr:
+                journalctl_error = result.stderr.strip()
+        except Exception as e:
+            journalctl_error = str(e)
+
+        if buffer.tell() == 0 and JOURNAL_AVAILABLE:
             reader = JournalReader()
             reader.open(JournalOpenMode.SYSTEM)
             # Match either service name (dashpi or inkypi) for backwards compatibility
@@ -315,6 +333,19 @@ def download_logs():
 
                 # Format the log entry similar to the journalctl default output
                 buffer.write(f"{formatted_ts} {hostname} {identifier}[{pid}]: {msg}\n")
+
+        if buffer.tell() == 0:
+            buffer.write("No DashPi service logs were found for this time range.\n")
+            buffer.write(f"Requested range: last {hours} hour(s), since {since.strftime('%Y-%m-%d %H:%M:%S')}.\n\n")
+            buffer.write("Things to check on the Raspberry Pi:\n")
+            buffer.write("  sudo systemctl status dashpi\n")
+            buffer.write("  sudo systemctl status inkypi\n")
+            buffer.write("  journalctl -u dashpi -n 100 --no-pager\n")
+            buffer.write("  journalctl -u inkypi -n 100 --no-pager\n")
+            if journalctl_error:
+                buffer.write(f"\njournalctl error: {journalctl_error}\n")
+            if not JOURNAL_AVAILABLE:
+                buffer.write("\ncysystemd is not installed, so the Python journal fallback is unavailable.\n")
 
         buffer.seek(0)
         # Add date and time to the filename
@@ -520,4 +551,3 @@ def import_config():
     except Exception as e:
         logger.error(f"Config import failed: {e}")
         return jsonify({"error": f"Import failed: {e}"}), 500
-
