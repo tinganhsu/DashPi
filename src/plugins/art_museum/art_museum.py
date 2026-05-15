@@ -61,8 +61,12 @@ class ArtMuseum(BasePlugin):
         logger.info(f"Artwork: '{artwork['title']}' by {artwork['artist']}")
 
         # Load and resize image
+        headers = {}
+        if source == "chicago":
+            headers["Referer"] = "https://www.artic.edu/"
+
         image = self.image_loader.from_url(
-            artwork['image_url'], dimensions, timeout_ms=40000, fit_mode=fit_mode
+            artwork['image_url'], dimensions, timeout_ms=40000, fit_mode=fit_mode, headers=headers
         )
 
         if not image:
@@ -128,6 +132,7 @@ class ArtMuseum(BasePlugin):
             logger.info("Fetching Met Museum object ID list (first time)...")
             resp = session.get(MET_SEARCH_URL, params={
                 "hasImages": "true",
+                "isPublicDomain": "true",
                 "q": "*"
             }, timeout=30)
             resp.raise_for_status()
@@ -171,6 +176,9 @@ class ArtMuseum(BasePlugin):
                 }
             except Exception as e:
                 logger.warning(f"Failed to fetch Met object {obj_id}: {e}")
+                # Remove invalid ID from cache so we don't try it again
+                if obj_id in self._met_ids:
+                    self._met_ids.remove(obj_id)
                 continue
 
         raise RuntimeError("Could not find a matching Met artwork after 20 attempts.")

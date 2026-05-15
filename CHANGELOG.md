@@ -2,6 +2,16 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.1.6] — 2026-05-15
+
+Stability improvements for art museum plugin.
+
+### Fixed
+- **Art Museum Chicago SSL/403**: Fixed SSL handshake failures (Cloudflare SNI) and 403 Forbidden errors for the Chicago Art Institute source by implementing an SSRF-safe adapter and providing required Referer headers.
+- **Adaptive Image Loader**: Refactored image loading to use a centralized SSRF-safe adapter with correct SNI support and browser-standard headers to improve compatibility with WAF-protected sites.
+- **Art Museum 404s**: Fixed frequent `404 Not Found` errors in the Art Museum plugin by implementing a self-healing cache that removes invalid object IDs.
+- **Met Museum Search**: Optimized the Met Museum search to prioritize Public Domain artworks for better reliability and higher quality images.
+
 ## [2.1.5] — 2026-05-15
 
 WiFi connectivity improvements.

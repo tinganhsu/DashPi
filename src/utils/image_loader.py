@@ -22,6 +22,31 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
+class SSRFSafeAdapter(requests.adapters.HTTPAdapter):
+    """Adapter that forces connection to a specific IP while preserving SNI for HTTPS."""
+    def __init__(self, safe_ip, **kwargs):
+        self.safe_ip = safe_ip
+        super().__init__(**kwargs)
+
+    def get_connection(self, url, proxies=None):
+        if proxies:
+            return super().get_connection(url, proxies)
+        
+        parsed = urlparse(url)
+        # Use the IP as the actual target host, but ensure server_hostname is set
+        # for SNI and certificate verification to work correctly.
+        pool_kwargs = {}
+        if parsed.scheme == 'https':
+            pool_kwargs['server_hostname'] = parsed.hostname
+            
+        return self.poolmanager.connection_from_host(
+            self.safe_ip,
+            port=parsed.port,
+            scheme=parsed.scheme,
+            pool_kwargs=pool_kwargs
+        )
+
+
 def _validate_url(url):
     """Validate a URL to prevent SSRF attacks. Blocks private/loopback IPs.
     Returns the resolved safe IP address to prevent DNS Rebinding.
@@ -96,7 +121,9 @@ class AdaptiveImageLoader:
 
     # Default headers to avoid 403 errors from sites that block requests without User-Agent
     DEFAULT_HEADERS = {
-        'User-Agent': 'DashPi/1.0 (https://github.com/fatihak/DashPi/) Python-requests'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
     }
 
     # Max image size limits (in megapixels) to prevent OOM crashes
@@ -237,45 +264,33 @@ class AdaptiveImageLoader:
 
             # Merge provided headers with defaults
             request_headers = {**self.DEFAULT_HEADERS, **(headers or {})}
-            # Ensure Host header is set to the original hostname for the web server
-            if 'Host' not in request_headers:
-                request_headers['Host'] = parsed.hostname
-
-            # Construct pinned URL using IP instead of hostname to prevent DNS Rebinding
-            netloc = safe_ip
-            if parsed.port:
-                netloc = f"{safe_ip}:{parsed.port}"
-            pinned_url = parsed._replace(netloc=netloc).geturl()
-
-            # For HTTPS, certificate verification will fail against an IP address.
-            # Since we have manually verified the IP is safe (non-private), we skip
-            # verification to allow the pinned connection.
-            verify = True
-            if parsed.scheme == 'https':
-                verify = False
-                logger.debug(f"HTTPS pinning to {safe_ip}: SSL verification disabled for this request to prevent SSRF")
 
             # Create temp file and stream download
             with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
                 tmp_path = tmp.name
 
-                session = get_http_session()
-                response = session.get(pinned_url, timeout=timeout_ms / 1000, stream=True, 
-                                       headers=request_headers, verify=verify)
-                response.raise_for_status()
+                # Use a session with SSRFSafeAdapter to pin the connection to the safe IP
+                # while preserving the original hostname for SNI and certificate verification.
+                with requests.Session() as session:
+                    adapter = SSRFSafeAdapter(safe_ip)
+                    session.mount(f"{parsed.scheme}://", adapter)
 
-                downloaded_bytes = 0
-                deadline = time.monotonic() + timeout_ms / 1000
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        tmp.write(chunk)
-                        downloaded_bytes += len(chunk)
-                    if time.monotonic() > deadline:
-                        response.close()
-                        raise requests.exceptions.Timeout(
-                            f"Download exceeded {timeout_ms/1000:.0f}s time limit ({downloaded_bytes/1024:.0f}KB downloaded)")
+                    response = session.get(url, timeout=timeout_ms / 1000, stream=True, 
+                                           headers=request_headers, verify=True)
+                    response.raise_for_status()
 
-                logger.debug(f"Downloaded {downloaded_bytes / 1024:.1f}KB to temp file")
+                    downloaded_bytes = 0
+                    deadline = time.monotonic() + timeout_ms / 1000
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            tmp.write(chunk)
+                            downloaded_bytes += len(chunk)
+                        if time.monotonic() > deadline:
+                            response.close()
+                            raise requests.exceptions.Timeout(
+                                f"Download exceeded {timeout_ms/1000:.0f}s time limit ({downloaded_bytes/1024:.0f}KB downloaded)")
+
+                    logger.debug(f"Downloaded {downloaded_bytes / 1024:.1f}KB to temp file")
 
             # Load from temp file with draft mode
             return self._load_from_file_lowmem(tmp_path, dimensions, resize, fit_mode)
@@ -350,60 +365,48 @@ class AdaptiveImageLoader:
 
             # Merge provided headers with defaults
             request_headers = {**self.DEFAULT_HEADERS, **(headers or {})}
-            # Ensure Host header is set to the original hostname for the web server
-            if 'Host' not in request_headers:
-                request_headers['Host'] = parsed.hostname
 
-            # Construct pinned URL using IP instead of hostname to prevent DNS Rebinding
-            netloc = safe_ip
-            if parsed.port:
-                netloc = f"{safe_ip}:{parsed.port}"
-            pinned_url = parsed._replace(netloc=netloc).geturl()
+            # Use a session with SSRFSafeAdapter to pin the connection to the safe IP
+            # while preserving the original hostname for SNI and certificate verification.
+            with requests.Session() as session:
+                adapter = SSRFSafeAdapter(safe_ip)
+                session.mount(f"{parsed.scheme}://", adapter)
 
-            # For HTTPS, certificate verification will fail against an IP address.
-            # Since we have manually verified the IP is safe (non-private), we skip
-            # verification to allow the pinned connection.
-            verify = True
-            if parsed.scheme == 'https':
-                verify = False
-                logger.debug(f"HTTPS pinning to {safe_ip}: SSL verification disabled for this request to prevent SSRF")
+                timeout_secs = timeout_ms / 1000
+                response = session.get(url, timeout=timeout_secs, stream=True, 
+                                       headers=request_headers, verify=True)
+                response.raise_for_status()
 
-            session = get_http_session()
-            timeout_secs = timeout_ms / 1000
-            response = session.get(pinned_url, timeout=timeout_secs, stream=True, 
-                                   headers=request_headers, verify=verify)
-            response.raise_for_status()
+                # Read with deadline to prevent slow-trickle hangs
+                chunks = []
+                deadline = time.monotonic() + timeout_secs
+                for chunk in response.iter_content(chunk_size=65536):
+                    if chunk:
+                        chunks.append(chunk)
+                    if time.monotonic() > deadline:
+                        response.close()
+                        raise requests.exceptions.Timeout(
+                            f"Download exceeded {timeout_secs:.0f}s time limit")
+                img_bytes = b''.join(chunks)
+                del chunks
+                buf = BytesIO(img_bytes)
+                del img_bytes
+                img = Image.open(buf)
+                original_size = img.size
+                original_pixels = original_size[0] * original_size[1]
+                megapixels = original_pixels / 1_000_000
+                logger.info(f"Downloaded image: {original_size[0]}x{original_size[1]} ({img.mode} mode, {megapixels:.1f}MP)")
 
-            # Read with deadline to prevent slow-trickle hangs
-            chunks = []
-            deadline = time.monotonic() + timeout_secs
-            for chunk in response.iter_content(chunk_size=65536):
-                if chunk:
-                    chunks.append(chunk)
-                if time.monotonic() > deadline:
-                    response.close()
-                    raise requests.exceptions.Timeout(
-                        f"Download exceeded {timeout_secs:.0f}s time limit")
-            img_bytes = b''.join(chunks)
-            del chunks
-            buf = BytesIO(img_bytes)
-            del img_bytes
-            img = Image.open(buf)
-            original_size = img.size
-            original_pixels = original_size[0] * original_size[1]
-            megapixels = original_pixels / 1_000_000
-            logger.info(f"Downloaded image: {original_size[0]}x{original_size[1]} ({img.mode} mode, {megapixels:.1f}MP)")
-
-            # Apply draft mode for large images before pixel decode
-            if megapixels > 4:
-                draft_target = (dimensions[0] * 2, dimensions[1] * 2)
-                img.draft('RGB', draft_target)
-                img.load()
-                logger.warning(f"Large image ({megapixels:.1f}MP), draft decoded to {img.size[0]}x{img.size[1]}")
-                gc.collect()
-            else:
-                img.load()
-            buf.close()
+                # Apply draft mode for large images before pixel decode
+                if megapixels > 4:
+                    draft_target = (dimensions[0] * 2, dimensions[1] * 2)
+                    img.draft('RGB', draft_target)
+                    img.load()
+                    logger.warning(f"Large image ({megapixels:.1f}MP), draft decoded to {img.size[0]}x{img.size[1]}")
+                    gc.collect()
+                else:
+                    img.load()
+                buf.close()
 
             if resize:
                 img = self._process_and_resize(img, dimensions, original_size, fit_mode)
