@@ -540,8 +540,9 @@
         </div>
 
         <!-- Buttons -->
-        <div class="buttons-container">
+        <div class="buttons-container" style="display: flex; gap: 12px; justify-content: center;">
             <button type="button" onclick="handleAction()" class="action-button">Save</button>
+            <a href="{{ url_for('auth.logout') }}" class="action-button" style="background-color: #95a5a6; text-decoration: none; display: flex; align-items: center; justify-content: center;">Logout</a>
         </div>
     </div>
     <!-- Success/Error Modal -->

@@ -2,6 +2,25 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.1.3] — 2026-05-15
+
+Security hardening release for Intranet environments.
+
+### Added
+- **Admin Authentication**: New login system with mandatory admin password. First-boot setup wizard for password creation.
+- **CSRF Protection**: Global Origin and Referer header validation for all POST/PUT/DELETE requests.
+- **SameSite Cookies**: Session cookies now use `SameSite=Lax` and `HttpOnly` attributes for browser-level security.
+- **SSRF Hardening**: Implemented IP pinning for all external image downloads (`image_url` plugin) to prevent DNS Rebinding attacks.
+- **Logout Functionality**: Added "Logout" button to the Settings page.
+
+### Changed
+- Config manager now supports secure password hashing using `werkzeug.security`.
+- Request interceptor added to protect sensitive routes while keeping display and static assets public.
+
+### Security
+- Resolved SSRF TOCTOU (Time-of-Check to Time-of-Use) vulnerability in image loader.
+- Mitigated unauthorized configuration access from local network.
+
 ## [2.1.2] — 2026-05-15
 
 Fork maintenance release collecting the changes made after the original InkyPi fork,

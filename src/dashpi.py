@@ -30,6 +30,7 @@ from blueprints.plugin import plugin_bp
 from blueprints.apikeys import apikeys_bp
 from blueprints.loops import loops_bp
 from blueprints.wifi import wifi_bp
+from blueprints.auth import auth_bp
 from plugins.pluginmanager.api import plugin_manage_bp
 from jinja2 import ChoiceLoader, FileSystemLoader
 from plugins.plugin_registry import load_plugins
@@ -56,6 +57,57 @@ else:
 logging.getLogger('waitress.queue').setLevel(logging.ERROR)
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB upload limit (config backups with images)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+@app.before_request
+def require_login():
+    """Global request interceptor for authentication and CSRF protection."""
+    # 1. CSRF Protection (Origin/Referer validation for mutations)
+    if request.method in ['POST', 'PUT', 'DELETE']:
+        origin = request.headers.get('Origin')
+        referer = request.headers.get('Referer')
+        target = f"{request.scheme}://{request.host}"
+        
+        # Check Origin first, fall back to Referer
+        if origin:
+            if origin != target:
+                logger.warning(f"CSRF Blocked: Origin mismatch ({origin} != {target})")
+                return "CSRF validation failed", 403
+        elif referer:
+            if not referer.startswith(target):
+                logger.warning(f"CSRF Blocked: Referer mismatch ({referer} not starting with {target})")
+                return "CSRF validation failed", 403
+        else:
+            # Most modern browsers send Origin for POST. If both missing, it's suspicious.
+            logger.warning(f"CSRF Blocked: Missing Origin/Referer for {request.method} request")
+            return "CSRF validation failed", 403
+
+    # 2. Authentication Protection
+    # Define public routes that don't require login
+    public_endpoints = [
+        'auth.login', 'auth.setup_password', 'static', 
+        'wifi.wifi_portal', 'wifi.wifi_scan', 'wifi.wifi_connect', 
+        'wifi.wifi_status', 'wifi.captive_android', 'wifi.captive_apple', 
+        'wifi.captive_windows'
+    ]
+    
+    # Also allow viewing the display and current image without login
+    public_endpoints.extend(['main.display_page', 'main.get_current_image'])
+
+    if request.endpoint in public_endpoints or not request.endpoint:
+        return
+
+    # If password not set yet, redirect to setup (handled in auth blueprint too but good to have here)
+    if not device_config.has_password():
+        if request.endpoint != 'auth.setup_password':
+            return redirect(url_for('auth.setup_password'))
+        return
+
+    # Check if authenticated
+    if not session.get('authenticated'):
+        return redirect(url_for('auth.login', next=request.url))
+
 template_dirs = [
    os.path.join(os.path.dirname(__file__), "templates"),    # Default template folder
    os.path.join(os.path.dirname(__file__), "plugins"),      # Plugin templates
@@ -94,6 +146,7 @@ app.register_blueprint(plugin_bp)
 app.register_blueprint(apikeys_bp)
 app.register_blueprint(loops_bp)
 app.register_blueprint(wifi_bp)
+app.register_blueprint(auth_bp)
 app.register_blueprint(plugin_manage_bp)
 
 # Inject project_name and version into all templates

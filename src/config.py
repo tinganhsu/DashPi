@@ -6,6 +6,7 @@ import logging
 import tempfile
 import threading
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 from model import RefreshInfo, LoopManager
 
 logger = logging.getLogger(__name__)
@@ -176,3 +177,19 @@ class Config:
     def clear_loop_override(self):
         """Clears any active loop override and persists."""
         self.update_value("loop_override", None, write=True)
+
+    def set_password(self, password):
+        """Hashes and sets the admin password."""
+        hashed = generate_password_hash(password)
+        self.update_value("admin_password", hashed, write=True)
+
+    def check_password(self, password):
+        """Verifies the provided password against the stored hash."""
+        hashed = self.config.get("admin_password")
+        if not hashed:
+            return False
+        return check_password_hash(hashed, password)
+
+    def has_password(self):
+        """Checks if an admin password has been set."""
+        return "admin_password" in self.config and self.config["admin_password"]
