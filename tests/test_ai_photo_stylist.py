@@ -1,6 +1,8 @@
 """Tests for the AI Photo Stylist plugin."""
 
+from io import BytesIO
 from unittest.mock import MagicMock
+import zipfile
 
 import pytest
 from PIL import Image
@@ -58,6 +60,7 @@ def test_settings_template_includes_cached_image_count(plugin):
     template = plugin.generate_settings_template()
 
     assert template["cached_image_count"] == 2
+    assert [item["name"] for item in template["cached_images"]] == ["first.png", "second.jpg"]
 
 
 def test_missing_gemini_key_raises(plugin, mock_device_config, tmp_path):
@@ -188,3 +191,50 @@ def test_cleanup_only_removes_plugin_uploads(plugin, tmp_path):
 
     assert not inside.exists()
     assert outside.exists()
+
+
+def test_download_cached_images_zip(client, monkeypatch, tmp_path):
+    cached_dir = tmp_path / "cached"
+    cached_dir.mkdir()
+    _create_test_image(cached_dir / "first.png")
+    _create_test_image(cached_dir / "second.jpg")
+    (cached_dir / "notes.txt").write_text("not an image\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+
+    resp = client.get("/plugin/ai_photo_stylist/download_cached")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "application/zip"
+    with zipfile.ZipFile(BytesIO(resp.data)) as zf:
+        assert sorted(zf.namelist()) == ["first.png", "second.jpg"]
+
+
+def test_delete_cached_image_does_not_update_upload_settings(client, monkeypatch, mock_device_config, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    cached_dir = tmp_path / "cached"
+    upload_dir.mkdir()
+    cached_dir.mkdir()
+    cached_file = cached_dir / "cached.png"
+    _create_test_image(cached_file)
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        lambda: str(upload_dir),
+    )
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+
+    resp = client.post(
+        "/plugin/ai_photo_stylist/delete_image",
+        json={"file_path": str(cached_file)},
+    )
+
+    assert resp.status_code == 200
+    assert not cached_file.exists()
+    mock_device_config.update_value.assert_not_called()

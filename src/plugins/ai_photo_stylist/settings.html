@@ -56,6 +56,17 @@
 </div>
 
 <div class="form-group">
+    <div id="cachedFileListHeader" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-size: 0.85em; color: var(--text-secondary, #888);" id="cachedFileCount"></span>
+        <a id="downloadCachedButton" href="/plugin/ai_photo_stylist/download_cached"
+           style="color: var(--accent-color, #2196f3); font-size: 0.8em; font-weight: 600; text-decoration: none; padding: 2px 6px;">
+            Download All
+        </a>
+    </div>
+    <div id="cachedFileNames" class="file-name-list"></div>
+</div>
+
+<div class="form-group">
     <label for="vibeId" class="form-label">Vibe</label>
     <select id="vibeId" name="vibeId" class="form-input">
         {% for vibe in vibes %}
@@ -107,6 +118,7 @@
 
 <script>
     const discoveredImages = {{ available_images | tojson }};
+    const cachedImages = {{ cached_images | tojson }};
     let uploadsInProgress = 0;
 
     function fileNameFromPath(filePath) {
@@ -263,6 +275,57 @@
         autoSaveFileList();
     }
 
+    function addCachedFileToList(fileName, filePath) {
+        const domId = fileDomId(fileName);
+        if (document.getElementById(`cached-${domId}`)) return;
+
+        const fileNamesDisplay = document.getElementById("cachedFileNames");
+        const fileElement = document.createElement("div");
+        fileElement.id = `cached-${domId}`;
+        fileElement.classList.add("file-name");
+
+        const nameEl = document.createElement("span");
+        nameEl.id = "fileNameText";
+        nameEl.textContent = fileName;
+        fileElement.appendChild(nameEl);
+
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "remove-btn";
+        removeButton.textContent = "X";
+        removeButton.addEventListener("click", () => removeCachedFile(fileName, filePath));
+        fileElement.appendChild(removeButton);
+        fileNamesDisplay.appendChild(fileElement);
+
+        updateCachedFileListHeader();
+    }
+
+    function removeCachedFile(fileName, filePath) {
+        const domId = fileDomId(fileName);
+        const el = document.getElementById(`cached-${domId}`);
+        if (el) el.remove();
+
+        fetch('/plugin/ai_photo_stylist/delete_image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_path: filePath })
+        }).catch(err => console.error('Delete cached image failed:', err));
+
+        updateCachedFileListHeader();
+    }
+
+    function updateCachedFileListHeader() {
+        const count = document.querySelectorAll('#cachedFileNames .file-name').length;
+        const header = document.getElementById('cachedFileListHeader');
+        const countEl = document.getElementById('cachedFileCount');
+        if (count > 0) {
+            header.style.display = 'flex';
+            countEl.textContent = `${count} cached photo${count !== 1 ? 's' : ''}`;
+        } else {
+            header.style.display = 'none';
+        }
+    }
+
     function updateFileListHeader() {
         const count = getCurrentFilePaths().length;
         const header = document.getElementById('fileListHeader');
@@ -293,6 +356,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        cachedImages.forEach(item => addCachedFileToList(item.name, item.path));
+
         let existingFiles = discoveredImages.map(item => item.path);
         if (loadPluginSettings && pluginSettings['imageFiles[]']) {
             existingFiles = pluginSettings['imageFiles[]'];

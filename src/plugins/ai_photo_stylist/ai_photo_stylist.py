@@ -35,7 +35,8 @@ class AIPhotoStylist(BasePlugin):
             "expected_key": "GOOGLE_GEMINI_SECRET",
         }
         template_params["available_images"] = self._get_available_images()
-        template_params["cached_image_count"] = len(self._get_cached_image_paths())
+        template_params["cached_images"] = self._get_cached_images()
+        template_params["cached_image_count"] = len(template_params["cached_images"])
 
         try:
             template_params["vibes"] = self._load_vibes()
@@ -103,6 +104,21 @@ class AIPhotoStylist(BasePlugin):
             return images
 
         for path in sorted(upload_dir.iterdir()):
+            if path.name.startswith(".") or path.suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+            images.append({
+                "name": path.name,
+                "path": str(path),
+            })
+        return images
+
+    def _get_cached_images(self):
+        images = []
+        cached_dir = self._cached_dir()
+        if not cached_dir.is_dir():
+            return images
+
+        for path in sorted(cached_dir.iterdir()):
             if path.name.startswith(".") or path.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
             images.append({
@@ -260,13 +276,7 @@ class AIPhotoStylist(BasePlugin):
         return self.image_loader.from_file(image_path, dimensions, resize=True, fit_mode=fit_mode)
 
     def _get_cached_image_paths(self):
-        cached_dir = self._cached_dir()
-        if not cached_dir.is_dir():
-            return []
-        return [
-            str(path) for path in cached_dir.iterdir()
-            if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in IMAGE_EXTENSIONS
-        ]
+        return [item["path"] for item in self._get_cached_images()]
 
     def _add_caption(self, image, image_path, vibe):
         img = image.convert("RGBA") if image.mode != "RGBA" else image

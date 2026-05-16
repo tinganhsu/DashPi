@@ -1,18 +1,21 @@
 """Plugin blueprint — plugin settings pages, image upload/delete, and update endpoints."""
 
-from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory
+from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory, send_file
 from plugins.plugin_registry import get_plugin_instance
 from utils.app_utils import resolve_path, handle_request_files, parse_form, sanitize_filename
 from refresh_task import ManualRefresh
+from io import BytesIO
 import json
 import os
 import logging
 import time
+import zipfile
 
 logger = logging.getLogger(__name__)
 plugin_bp = Blueprint("plugin", __name__)
 
 AI_PHOTO_STYLIST_UPLOAD_DIR = os.path.join("static", "images", "ai_photo_stylist", "uploads")
+AI_PHOTO_STYLIST_CACHED_DIR = os.path.join("static", "images", "ai_photo_stylist", "cached")
 AI_PHOTO_STYLIST_SETTINGS_KEY = "plugin_last_settings_ai_photo_stylist"
 IMAGE_UPLOAD_EXTENSIONS = {'pdf', 'png', 'avif', 'jpg', 'jpeg', 'gif', 'webp', 'heif', 'heic'}
 
@@ -31,6 +34,17 @@ def _ai_photo_stylist_upload_dir():
     upload_dir = resolve_path(AI_PHOTO_STYLIST_UPLOAD_DIR)
     os.makedirs(upload_dir, exist_ok=True)
     return upload_dir
+
+
+def _ai_photo_stylist_cached_dir():
+    cached_dir = resolve_path(AI_PHOTO_STYLIST_CACHED_DIR)
+    os.makedirs(cached_dir, exist_ok=True)
+    return cached_dir
+
+
+def _is_allowed_image_file(file_path):
+    extension = os.path.splitext(file_path)[1].replace('.', '').lower()
+    return extension in IMAGE_UPLOAD_EXTENSIONS
 
 @plugin_bp.route('/plugin/<plugin_id>')
 def plugin_page(plugin_id):
@@ -343,7 +357,7 @@ def ai_photo_stylist_check_files():
 
 @plugin_bp.route('/plugin/ai_photo_stylist/delete_image', methods=['POST'])
 def ai_photo_stylist_delete_image():
-    """Delete one AI Photo Stylist upload and remove it from saved settings."""
+    """Delete one AI Photo Stylist upload/cache file and update saved settings when needed."""
     device_config = current_app.config['DEVICE_CONFIG']
     try:
         data = request.get_json() or {}
@@ -352,28 +366,67 @@ def ai_photo_stylist_delete_image():
             return jsonify({"error": "No file path provided"}), 400
 
         upload_dir = _ai_photo_stylist_upload_dir()
-        if not _is_path_in_dir(file_path, upload_dir):
+        cached_dir = _ai_photo_stylist_cached_dir()
+        is_upload = _is_path_in_dir(file_path, upload_dir)
+        is_cached = _is_path_in_dir(file_path, cached_dir)
+        if not is_upload and not is_cached:
             return jsonify({"error": "Invalid file path"}), 403
 
         abs_path = os.path.abspath(file_path)
-        if os.path.exists(abs_path):
+        if os.path.exists(abs_path) and not os.path.isfile(abs_path):
+            return jsonify({"error": "Invalid file path"}), 400
+        if os.path.isfile(abs_path):
             os.remove(abs_path)
             logger.info(f"Deleted AI Photo Stylist image: {os.path.basename(abs_path)}")
 
-        settings = device_config.get_config(AI_PHOTO_STYLIST_SETTINGS_KEY, default={})
-        file_list = settings.get("imageFiles[]", [])
-        if file_path in file_list:
-            file_list.remove(file_path)
-            settings["imageFiles[]"] = file_list
-            if settings.get("sourceImagePath") == file_path:
-                settings["sourceImagePath"] = file_list[0] if file_list else ""
-            device_config.update_value(AI_PHOTO_STYLIST_SETTINGS_KEY, settings, write=True)
+        if is_upload:
+            settings = device_config.get_config(AI_PHOTO_STYLIST_SETTINGS_KEY, default={})
+            file_list = settings.get("imageFiles[]", [])
+            if file_path in file_list:
+                file_list.remove(file_path)
+                settings["imageFiles[]"] = file_list
+                if settings.get("sourceImagePath") == file_path:
+                    settings["sourceImagePath"] = file_list[0] if file_list else ""
+                device_config.update_value(AI_PHOTO_STYLIST_SETTINGS_KEY, settings, write=True)
 
         return jsonify({"success": True}), 200
 
     except Exception as e:
         logger.exception(f"Error deleting AI Photo Stylist image: {str(e)}")
         return jsonify({"error": f"Delete failed: {str(e)}"}), 500
+
+
+@plugin_bp.route('/plugin/ai_photo_stylist/download_cached')
+def ai_photo_stylist_download_cached():
+    """Download all AI Photo Stylist cached images as a zip archive."""
+    try:
+        cached_dir = _ai_photo_stylist_cached_dir()
+        image_paths = [
+            os.path.join(cached_dir, filename)
+            for filename in sorted(os.listdir(cached_dir))
+            if not filename.startswith(".")
+            and os.path.isfile(os.path.join(cached_dir, filename))
+            and _is_allowed_image_file(filename)
+        ]
+
+        if not image_paths:
+            return jsonify({"error": "No cached AI Photo Stylist images found"}), 404
+
+        archive = BytesIO()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            for image_path in image_paths:
+                zf.write(image_path, arcname=os.path.basename(image_path))
+        archive.seek(0)
+
+        return send_file(
+            archive,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"ai_photo_stylist_cached_{int(time.time())}.zip",
+        )
+    except Exception as e:
+        logger.exception(f"Error downloading AI Photo Stylist cache: {str(e)}")
+        return jsonify({"error": "Download failed"}), 500
 
 
 @plugin_bp.route('/plugin/ai_photo_stylist/save_image_list', methods=['POST'])
