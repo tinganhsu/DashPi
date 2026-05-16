@@ -11,6 +11,7 @@ import io
 import json
 import zipfile
 import shutil
+import tempfile
 
 # Try to import cysystemd for journal reading (Linux only)
 try:
@@ -30,6 +31,32 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 settings_bp = Blueprint("settings", __name__)
+
+
+def _backup_waveshare_epd(repo_dir):
+    """Preserve locally downloaded Waveshare drivers during git reset updates."""
+    epd_dir = os.path.join(repo_dir, "src", "display", "waveshare_epd")
+    if not os.path.isdir(epd_dir):
+        return None
+
+    backup_dir = tempfile.mkdtemp(prefix="dashpi-waveshare-epd-")
+    shutil.copytree(
+        epd_dir,
+        backup_dir,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    return backup_dir
+
+
+def _restore_waveshare_epd(repo_dir, backup_dir):
+    if not backup_dir or not os.path.isdir(backup_dir):
+        return
+
+    epd_dir = os.path.join(repo_dir, "src", "display", "waveshare_epd")
+    os.makedirs(epd_dir, exist_ok=True)
+    shutil.copytree(backup_dir, epd_dir, dirs_exist_ok=True)
+    shutil.rmtree(backup_dir, ignore_errors=True)
 
 def _get_version():
     """Read version from VERSION file."""
@@ -223,8 +250,10 @@ def check_for_updates():
 @settings_bp.route('/api/update/apply', methods=['POST'])
 def apply_update():
     """Pull latest code from remote and restart the service."""
+    waveshare_epd_backup = None
     try:
         repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        waveshare_epd_backup = _backup_waveshare_epd(repo_dir)
 
         # Detect current branch
         branch_result = subprocess.run(
@@ -246,6 +275,9 @@ def apply_update():
         )
         if result.returncode != 0:
             return jsonify({"error": f"Git reset failed: {result.stderr.strip()}"}), 500
+
+        _restore_waveshare_epd(repo_dir, waveshare_epd_backup)
+        waveshare_epd_backup = None
 
         # Read the new version
         version_file = os.path.join(repo_dir, 'VERSION')
@@ -271,6 +303,9 @@ def apply_update():
     except Exception as e:
         logger.error(f"Update apply failed: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        if waveshare_epd_backup:
+            shutil.rmtree(waveshare_epd_backup, ignore_errors=True)
 
 
 @settings_bp.route('/download-logs')

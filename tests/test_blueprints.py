@@ -125,6 +125,26 @@ class TestSettingsBlueprint:
             rules = [r.rule for r in flask_app.url_map.iter_rules()]
             assert "/settings" in rules
 
+    def test_waveshare_epd_backup_restore_preserves_local_driver(self, tmp_path):
+        from blueprints.settings import _backup_waveshare_epd, _restore_waveshare_epd
+
+        repo_dir = tmp_path
+        epd_dir = repo_dir / "src" / "display" / "waveshare_epd"
+        epd_dir.mkdir(parents=True)
+        local_driver = epd_dir / "epd7in3e.py"
+        local_driver.write_text("# downloaded driver\n")
+        (epd_dir / "__pycache__").mkdir()
+        (epd_dir / "__pycache__" / "epd7in3e.pyc").write_bytes(b"cached")
+
+        backup_dir = _backup_waveshare_epd(str(repo_dir))
+        import shutil
+        shutil.rmtree(epd_dir)
+
+        _restore_waveshare_epd(str(repo_dir), backup_dir)
+
+        assert local_driver.read_text() == "# downloaded driver\n"
+        assert not (epd_dir / "__pycache__" / "epd7in3e.pyc").exists()
+
     def test_save_settings_valid(self, client):
         resp = client.post("/save_settings", data={
             "deviceName": "TestPi",
