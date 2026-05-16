@@ -105,6 +105,82 @@ fetch_waveshare_driver() {
   fi
 }
 
+apply_photopainter_hat_patch() {
+  if [ "$WS_TYPE" != "epd7in3e" ]; then
+    return
+  fi
+
+  echo
+  read -r -p "Apply RPi Zero PhotoPainter HAT compatibility patch for epd7in3e? This rotates the image 180 degrees and changes RaspberryPi PWR_PIN to GPIO 27. [y/N] " userInput
+  case "${userInput,,}" in
+    y|yes)
+      ;;
+    *)
+      echo "Skipping RPi Zero PhotoPainter HAT compatibility patch."
+      return
+      ;;
+  esac
+
+  local DRIVER_DEST="$SRC_PATH/display/waveshare_epd"
+  local DRIVER_FILE="$DRIVER_DEST/$WS_TYPE.py"
+  local EPD_CONFIG_FILE="$DRIVER_DEST/epdconfig.py"
+
+  python3 - "$DRIVER_FILE" "$EPD_CONFIG_FILE" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+driver_path = Path(sys.argv[1])
+config_path = Path(sys.argv[2])
+
+driver_text = driver_path.read_text()
+driver_pattern = (
+    "        if(imwidth == self.width and imheight == self.height):\n"
+    "            image_temp = image"
+)
+driver_replacement = (
+    "        if(imwidth == self.width and imheight == self.height):\n"
+    "            image_temp = image.rotate(180, expand=True)"
+)
+if driver_pattern in driver_text:
+    driver_text = driver_text.replace(driver_pattern, driver_replacement, 1)
+elif driver_replacement not in driver_text:
+    raise SystemExit("Could not find the expected epd7in3e image orientation block.")
+driver_path.write_text(driver_text)
+
+config_text = config_path.read_text()
+raspberry_pi_class = re.search(r"(?ms)^class RaspberryPi:\n.*?(?=^class |\Z)", config_text)
+if not raspberry_pi_class:
+    raise SystemExit("Could not find class RaspberryPi in epdconfig.py.")
+
+patched_class = re.sub(
+    r"(?m)^(\s*PWR_PIN\s*=\s*)\d+(\s*)$",
+    r"\g<1>27\2",
+    raspberry_pi_class.group(0),
+    count=1,
+)
+if patched_class == raspberry_pi_class.group(0) and not re.search(
+    r"(?m)^\s*PWR_PIN\s*=\s*27\s*$",
+    raspberry_pi_class.group(0),
+):
+    raise SystemExit("Could not find RaspberryPi.PWR_PIN in epdconfig.py.")
+
+config_text = (
+    config_text[:raspberry_pi_class.start()]
+    + patched_class
+    + config_text[raspberry_pi_class.end():]
+)
+config_path.write_text(config_text)
+PY
+
+  if [ $? -eq 0 ]; then
+    echo_success "\tApplied RPi Zero PhotoPainter HAT compatibility patch."
+  else
+    echo_error "ERROR: Failed to apply RPi Zero PhotoPainter HAT compatibility patch."
+    exit 1
+  fi
+}
+
 show_loader() {
   local pid=$!
   local delay=0.1
@@ -541,6 +617,7 @@ check_permissions
 stop_service
 if [[ -n "$WS_TYPE" ]]; then
   fetch_waveshare_driver
+  apply_photopainter_hat_patch
 fi
 enable_interfaces
 install_debian_dependencies
