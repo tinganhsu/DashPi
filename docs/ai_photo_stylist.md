@@ -6,6 +6,7 @@ AI Photo Stylist is a built-in DashPi plugin that restyles your own photos with 
 
 - Upload photos inside the AI Photo Stylist settings page.
 - Select one uploaded photo, or let the plugin pick one randomly.
+- In random mode, prioritize photos that have not been styled yet, then unused styles for each photo.
 - Optionally include cached generated images in the random photo pool and display them directly when selected.
 - Select a style from `vibe-pic.json`, or let the plugin pick one randomly.
 - Generate a new styled image with Gemini.
@@ -33,10 +34,12 @@ AI Photo Stylist uses private folders under `src/static/images/ai_photo_stylist/
 ```text
 src/static/images/ai_photo_stylist/uploads/
 src/static/images/ai_photo_stylist/cached/
+src/static/images/ai_photo_stylist/style_usage.json
 ```
 
 - `uploads/` stores source photos uploaded through this plugin.
 - `cached/` stores Gemini-generated PNG outputs.
+- `style_usage.json` stores the random-selection history for successful source photo and style combinations.
 - These folders are not shared with the Image Upload plugin.
 
 The style prompt file lives here:
@@ -67,14 +70,22 @@ An optional `id` field may be provided. If omitted, DashPi derives one from the 
 ## Settings
 
 - **Source Photo**: choose one uploaded photo.
-- **Random Photo**: pick a random uploaded photo each refresh.
+- **Random Photo**: pick an uploaded photo each refresh, prioritizing photos with no generated styles yet.
 - **Include Cache in Random**: when Random Photo is enabled, also include generated cache files in the random pool. If a cached file is selected, DashPi displays it directly and skips Gemini generation.
 - **Vibe**: choose one style from `vibe-pic.json`.
-- **Random Vibe**: pick a random style each refresh.
+- **Random Vibe**: pick a style each refresh, prioritizing styles that have not yet been used for the selected source photo.
 - **Extra Prompt**: append extra instructions to the selected vibe prompt.
 - **Image Model**: choose the Gemini image model.
 - **Fit Mode**: fit with letterboxing or fill by cropping.
 - **Show Caption**: overlay the source filename and vibe name.
+
+## Random Selection Behavior
+
+When both Random Photo and Random Vibe are enabled, AI Photo Stylist tracks successful source photo and style combinations. It first chooses from uploaded photos that have never been styled. After every uploaded photo has at least one result, it chooses photos that still have unused styles. For the selected photo, Random Vibe chooses from styles that have not yet been used with that photo.
+
+After every uploaded photo has been generated with every available style, the usage history for the current uploaded photos resets and the cycle starts again. The history is stored in `src/static/images/ai_photo_stylist/style_usage.json`, not in `device.json`, so the main DashPi config stays small. DashPi's normal update flow uses the existing source tree and does not overwrite this ignored runtime file.
+
+The history is updated only after Gemini successfully generates and saves a new cached image. Cached images shown directly through Include Cache in Random do not change this history.
 
 ## Cache Fallback
 
@@ -87,3 +98,4 @@ When Gemini generation fails because of an API or SDK error, DashPi logs the exc
 - Deleting source photos from the settings page only removes files from `uploads/`.
 - Cached generated images are kept so fallback remains useful.
 - To clear generated results manually, remove files from `src/static/images/ai_photo_stylist/cached/`.
+- To reset random photo/style history manually, remove `src/static/images/ai_photo_stylist/style_usage.json`.

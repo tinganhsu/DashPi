@@ -3,6 +3,7 @@
 from io import BytesIO
 from unittest.mock import MagicMock
 import zipfile
+import json
 
 import pytest
 from PIL import Image
@@ -33,15 +34,29 @@ def plugin(monkeypatch, tmp_path):
 
     upload_dir = tmp_path / "uploads"
     cached_dir = tmp_path / "cached"
+    usage_state_path = tmp_path / "style_usage.json"
     upload_dir.mkdir()
     cached_dir.mkdir()
 
     monkeypatch.setattr(AIPhotoStylist, "_upload_dir", staticmethod(lambda: upload_dir))
     monkeypatch.setattr(AIPhotoStylist, "_cached_dir", staticmethod(lambda: cached_dir))
+    monkeypatch.setattr(AIPhotoStylist, "_usage_state_path", staticmethod(lambda: usage_state_path))
     instance = AIPhotoStylist(AI_PHOTO_STYLIST_CONFIG)
     instance._test_upload_dir = upload_dir
     instance._test_cached_dir = cached_dir
+    instance._test_usage_state_path = usage_state_path
     return instance
+
+
+def _write_usage_state(plugin, photos):
+    plugin._test_usage_state_path.write_text(
+        json.dumps({"version": 1, "photos": photos}),
+        encoding="utf-8",
+    )
+
+
+def _read_usage_state(plugin):
+    return json.loads(plugin._test_usage_state_path.read_text(encoding="utf-8"))
 
 
 def test_loads_user_vibe_pic_format(plugin):
@@ -143,9 +158,7 @@ def test_random_photo_and_vibe(plugin, mock_device_config):
 
 
 def test_random_photo_can_serve_cached_image_without_gemini(plugin, mock_device_config, monkeypatch):
-    source = plugin._test_upload_dir / "source.png"
     cached = plugin._test_cached_dir / "cached.png"
-    _create_test_image(source)
     _create_test_image(cached, size=(300, 200), color="red")
     mock_device_config.load_env_key.return_value = None
     plugin._generate_with_gemini = MagicMock()
@@ -156,7 +169,6 @@ def test_random_photo_can_serve_cached_image_without_gemini(plugin, mock_device_
     )
 
     img = plugin.generate_image({
-        "imageFiles[]": [str(source)],
         "randomizePhoto": "true",
         "includeCachedInRandom": "true",
         "fitMode": "fit",
@@ -165,6 +177,157 @@ def test_random_photo_can_serve_cached_image_without_gemini(plugin, mock_device_
     assert_valid_image(img, (800, 480))
     mock_device_config.load_env_key.assert_not_called()
     plugin._generate_with_gemini.assert_not_called()
+
+
+def test_random_photo_prefers_never_styled_upload(plugin, mock_device_config, monkeypatch):
+    first = plugin._test_upload_dir / "first.png"
+    second = plugin._test_upload_dir / "second.png"
+    _create_test_image(first)
+    _create_test_image(second)
+    vibes = plugin._load_vibes()
+    settings = {
+        "imageFiles[]": [str(first), str(second)],
+        "randomizePhoto": "true",
+        "randomizeVibe": "true",
+    }
+    _write_usage_state(plugin, {
+        plugin._history_key_for_image(first): [vibes[0]["id"]],
+    })
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+    monkeypatch.setattr(
+        "plugins.ai_photo_stylist.ai_photo_stylist.random.choice",
+        lambda candidates: candidates[0],
+    )
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    assert _read_usage_state(plugin)["photos"][plugin._history_key_for_image(second)]
+
+
+def test_random_vibe_prefers_unused_style_for_source(plugin, mock_device_config, monkeypatch):
+    source = plugin._test_upload_dir / "source.png"
+    _create_test_image(source)
+    vibes = plugin._load_vibes()
+    settings = {
+        "imageFiles[]": [str(source)],
+        "randomizeVibe": "true",
+    }
+    _write_usage_state(plugin, {
+        plugin._history_key_for_image(source): [vibes[0]["id"]],
+    })
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+    monkeypatch.setattr(
+        "plugins.ai_photo_stylist.ai_photo_stylist.random.choice",
+        lambda candidates: candidates[0],
+    )
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    assert _read_usage_state(plugin)["photos"] == {
+        plugin._history_key_for_image(source): [vibes[0]["id"], vibes[1]["id"]],
+    }
+
+
+def test_random_photo_prefers_sources_with_unused_styles(plugin, mock_device_config, monkeypatch):
+    first = plugin._test_upload_dir / "first.png"
+    second = plugin._test_upload_dir / "second.png"
+    _create_test_image(first)
+    _create_test_image(second)
+    vibe_ids = [vibe["id"] for vibe in plugin._load_vibes()]
+    settings = {
+        "imageFiles[]": [str(first), str(second)],
+        "randomizePhoto": "true",
+        "randomizeVibe": "true",
+    }
+    _write_usage_state(plugin, {
+        plugin._history_key_for_image(first): list(vibe_ids),
+        plugin._history_key_for_image(second): [vibe_ids[0]],
+    })
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+    monkeypatch.setattr(
+        "plugins.ai_photo_stylist.ai_photo_stylist.random.choice",
+        lambda candidates: candidates[0],
+    )
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    state = _read_usage_state(plugin)["photos"]
+    assert state[plugin._history_key_for_image(second)] == [vibe_ids[0], vibe_ids[1]]
+
+
+def test_random_photo_resets_history_after_all_combinations_used(plugin, mock_device_config, monkeypatch):
+    first = plugin._test_upload_dir / "first.png"
+    second = plugin._test_upload_dir / "second.png"
+    _create_test_image(first)
+    _create_test_image(second)
+    vibe_ids = [vibe["id"] for vibe in plugin._load_vibes()]
+    settings = {
+        "imageFiles[]": [str(first), str(second)],
+        "randomizePhoto": "true",
+        "randomizeVibe": "true",
+    }
+    _write_usage_state(plugin, {
+        plugin._history_key_for_image(first): list(vibe_ids),
+        plugin._history_key_for_image(second): list(vibe_ids),
+    })
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+    monkeypatch.setattr(
+        "plugins.ai_photo_stylist.ai_photo_stylist.random.choice",
+        lambda candidates: candidates[0],
+    )
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    assert _read_usage_state(plugin)["photos"] == {
+        plugin._history_key_for_image(first): [vibe_ids[0]],
+    }
+
+
+def test_generation_error_does_not_mark_style_used(plugin, mock_device_config):
+    source = plugin._test_upload_dir / "source.png"
+    cached = plugin._test_cached_dir / "fallback.png"
+    _create_test_image(source)
+    _create_test_image(cached, size=(300, 200), color="red")
+    settings = {
+        "imageFiles[]": [str(source)],
+        "randomizeVibe": "true",
+    }
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(side_effect=RuntimeError("Gemini down"))
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    assert not plugin._test_usage_state_path.exists()
+    assert "lastStyledVibeId" not in settings
+
+
+def test_generate_image_removes_legacy_usage_settings(plugin, mock_device_config):
+    source = plugin._test_upload_dir / "source.png"
+    _create_test_image(source)
+    settings = {
+        "imageFiles[]": [str(source)],
+        "styleUsageHistory": {"legacy": ["vibe"]},
+        "lastStyledSourceImagePath": "old-source",
+        "lastStyledVibeId": "old-vibe",
+    }
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+
+    img = plugin.generate_image(settings, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    assert "styleUsageHistory" not in settings
+    assert "lastStyledSourceImagePath" not in settings
+    assert "lastStyledVibeId" not in settings
 
 
 def test_vertical_orientation(plugin, mock_device_config):

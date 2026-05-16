@@ -2,6 +2,13 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.2.1] — 2026-05-17
+
+### Changed
+- **AI Photo Stylist randomization**: Random Photo now prioritizes uploaded photos that have not been styled yet, and Random Vibe prioritizes styles that have not yet been used for the selected photo.
+- **AI Photo Stylist state storage**: Moved random style usage history out of `device.json` into ignored plugin runtime state at `src/static/images/ai_photo_stylist/style_usage.json`.
+- **AI Photo Stylist vibes**: Updated the stained-glass vibe prompt for a cleaner minimalist background.
+
 ## [2.2] — 2026-05-16
 
 ### Added

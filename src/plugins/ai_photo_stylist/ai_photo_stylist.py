@@ -22,6 +22,8 @@ GEMINI_IMAGE_MODELS = [
 ]
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heif", ".heic", ".avif"}
+USAGE_STATE_VERSION = 1
+LEGACY_USAGE_HISTORY_KEY = "styleUsageHistory"
 
 
 class AIPhotoStylist(BasePlugin):
@@ -53,6 +55,7 @@ class AIPhotoStylist(BasePlugin):
         dimensions = self._get_dimensions(device_config)
         fit_mode = settings.get("fitMode", "fit")
         show_caption = settings.get("showCaption") == "true"
+        self._remove_legacy_usage_settings(settings)
 
         image_path, is_cached_image = self._select_source_image(settings)
         if is_cached_image:
@@ -63,7 +66,7 @@ class AIPhotoStylist(BasePlugin):
         if not api_key:
             raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
 
-        vibe = self._select_vibe(settings)
+        vibe = self._select_vibe(settings, image_path)
         final_prompt = self._build_prompt(vibe, settings.get("customPrompt", ""))
         model = settings.get("geminiImageModel", DEFAULT_GEMINI_MODEL)
         if model not in GEMINI_IMAGE_MODELS:
@@ -72,6 +75,7 @@ class AIPhotoStylist(BasePlugin):
         try:
             generated = self._generate_with_gemini(api_key, model, image_path, final_prompt, dimensions)
             cached_path = self._save_cached_image(generated, image_path, vibe)
+            self._mark_style_used(settings, image_path, vibe)
             logger.info(f"Cached generated image: {cached_path}")
 
             image = self.image_loader.resize_image(generated, dimensions, fit_mode=fit_mode)
@@ -180,11 +184,16 @@ class AIPhotoStylist(BasePlugin):
             cached_candidates = []
             if settings.get("includeCachedInRandom") == "true":
                 cached_candidates = self._get_cached_image_paths()
-                candidates.extend(cached_candidates)
-            if not candidates:
+            if not candidates and not cached_candidates:
                 raise RuntimeError("No AI Photo Stylist images found. Upload photos in this plugin first.")
-            selected = random.choice(candidates)
-            return selected, selected in cached_candidates
+
+            if candidates:
+                candidates = self._prioritize_random_source_candidates(candidates, settings)
+                selected = random.choice(candidates)
+                return selected, False
+
+            selected = random.choice(cached_candidates)
+            return selected, True
 
         image_path = settings.get("sourceImagePath") or (image_paths[0] if image_paths else "")
         if not image_path:
@@ -195,9 +204,13 @@ class AIPhotoStylist(BasePlugin):
             raise RuntimeError("Selected source photo was not found. Re-select or upload it again.")
         return image_path, False
 
-    def _select_vibe(self, settings):
+    def _select_vibe(self, settings, image_path=None):
         vibes = self._load_vibes()
         if settings.get("randomizeVibe") == "true":
+            if image_path:
+                unused_vibes = self._unused_vibes_for_source(settings, image_path, vibes)
+                if unused_vibes:
+                    return random.choice(unused_vibes)
             return random.choice(vibes)
 
         vibe_id = settings.get("vibeId", "")
@@ -207,6 +220,135 @@ class AIPhotoStylist(BasePlugin):
         if not vibe_id and vibes:
             return vibes[0]
         raise RuntimeError("Selected vibe was not found in vibe-pic.json.")
+
+    def _prioritize_random_source_candidates(self, candidates, settings):
+        vibes = self._load_vibes()
+        vibe_ids = {vibe["id"] for vibe in vibes}
+        state = self._load_usage_state()
+        history = state["photos"]
+        candidates = list(dict.fromkeys(candidates))
+        self._prune_usage_state(state, candidates)
+
+        if settings.get("randomizeVibe") == "true":
+            unused_sources = [
+                path for path in candidates
+                if not (set(history.get(self._history_key_for_image(path), [])) & vibe_ids)
+            ]
+            if unused_sources:
+                return unused_sources
+
+            sources_with_unused_vibes = [
+                path for path in candidates
+                if vibe_ids - set(history.get(self._history_key_for_image(path), []))
+            ]
+            if sources_with_unused_vibes:
+                return sources_with_unused_vibes
+
+            self._reset_usage_history(candidates, state)
+            return candidates
+
+        vibe_id = settings.get("vibeId", "")
+        selected_vibe = next((item for item in vibes if item["id"] == vibe_id), vibes[0])
+        unused_sources = [
+            path for path in candidates
+            if selected_vibe["id"] not in set(history.get(self._history_key_for_image(path), []))
+        ]
+        if unused_sources:
+            never_styled_sources = [
+                path for path in unused_sources
+                if not (set(history.get(self._history_key_for_image(path), [])) & vibe_ids)
+            ]
+            return never_styled_sources or unused_sources
+
+        self._reset_usage_history(candidates, state)
+        return candidates
+
+    def _unused_vibes_for_source(self, settings, image_path, vibes):
+        history = self._load_usage_state()["photos"]
+        used_vibes = set(history.get(self._history_key_for_image(image_path), []))
+        return [vibe for vibe in vibes if vibe["id"] not in used_vibes]
+
+    def _mark_style_used(self, settings, image_path, vibe):
+        state = self._load_usage_state()
+        history = state["photos"]
+        key = self._history_key_for_image(image_path)
+        used_vibes = history.setdefault(key, [])
+        if vibe["id"] not in used_vibes:
+            used_vibes.append(vibe["id"])
+        self._save_usage_state(state)
+
+    def _reset_usage_history(self, current_image_paths, state=None):
+        state = state or self._load_usage_state()
+        current_keys = {self._history_key_for_image(path) for path in current_image_paths}
+        state["photos"] = {
+            key: value for key, value in state["photos"].items()
+            if key not in current_keys
+        }
+        self._save_usage_state(state)
+
+    def _prune_usage_state(self, state, current_image_paths):
+        current_keys = {self._history_key_for_image(path) for path in current_image_paths}
+        pruned = {
+            key: value for key, value in state["photos"].items()
+            if key in current_keys
+        }
+        if pruned != state["photos"]:
+            state["photos"] = pruned
+            self._save_usage_state(state)
+
+    def _load_usage_state(self):
+        state_path = self._usage_state_path()
+        if not state_path.is_file():
+            return {"version": USAGE_STATE_VERSION, "photos": {}}
+
+        try:
+            with state_path.open(encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Could not load AI Photo Stylist usage state, starting fresh: {exc}")
+            return {"version": USAGE_STATE_VERSION, "photos": {}}
+
+        if not isinstance(state, dict):
+            return {"version": USAGE_STATE_VERSION, "photos": {}}
+        history = state.get("photos", {})
+        if not isinstance(history, dict):
+            history = {}
+
+        clean_history = {}
+        for image_key, vibe_ids in history.items():
+            if not isinstance(image_key, str):
+                continue
+            if isinstance(vibe_ids, str):
+                vibe_ids = [vibe_ids]
+            if not isinstance(vibe_ids, list):
+                continue
+            clean_history[image_key] = [vibe_id for vibe_id in vibe_ids if isinstance(vibe_id, str)]
+        return {"version": USAGE_STATE_VERSION, "photos": clean_history}
+
+    def _save_usage_state(self, state):
+        state_path = self._usage_state_path()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": USAGE_STATE_VERSION,
+            "photos": state.get("photos", {}),
+        }
+        tmp_path = state_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp_path, state_path)
+
+    def _remove_legacy_usage_settings(self, settings):
+        settings.pop(LEGACY_USAGE_HISTORY_KEY, None)
+        settings.pop("lastStyledSourceImagePath", None)
+        settings.pop("lastStyledVibeId", None)
+
+    def _history_key_for_image(self, image_path):
+        try:
+            resolved_path = str(Path(image_path).resolve())
+        except OSError:
+            resolved_path = str(image_path)
+        return hashlib.sha1(resolved_path.encode("utf-8")).hexdigest()[:16]
 
     def _build_prompt(self, vibe, custom_prompt):
         prompt_parts = [
@@ -333,6 +475,10 @@ class AIPhotoStylist(BasePlugin):
     @staticmethod
     def _cached_dir():
         return Path(resolve_path(os.path.join("static", "images", "ai_photo_stylist", "cached")))
+
+    @staticmethod
+    def _usage_state_path():
+        return Path(resolve_path(os.path.join("static", "images", "ai_photo_stylist", "style_usage.json")))
 
     @staticmethod
     def _slugify(value):
