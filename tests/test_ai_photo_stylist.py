@@ -49,6 +49,17 @@ def test_loads_user_vibe_pic_format(plugin):
     assert vibes[0]["name"] == "浮世繪風格 (Ukiyo-e)"
 
 
+def test_settings_template_includes_cached_image_count(plugin):
+    _create_test_image(plugin._test_cached_dir / "first.png")
+    _create_test_image(plugin._test_cached_dir / "second.jpg")
+    (plugin._test_cached_dir / ".gitignore").write_text("*\n", encoding="utf-8")
+    (plugin._test_cached_dir / "notes.txt").write_text("not an image\n", encoding="utf-8")
+
+    template = plugin.generate_settings_template()
+
+    assert template["cached_image_count"] == 2
+
+
 def test_missing_gemini_key_raises(plugin, mock_device_config, tmp_path):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -126,6 +137,31 @@ def test_random_photo_and_vibe(plugin, mock_device_config):
     }, mock_device_config)
 
     assert_valid_image(img, (800, 480))
+
+
+def test_random_photo_can_serve_cached_image_without_gemini(plugin, mock_device_config, monkeypatch):
+    source = plugin._test_upload_dir / "source.png"
+    cached = plugin._test_cached_dir / "cached.png"
+    _create_test_image(source)
+    _create_test_image(cached, size=(300, 200), color="red")
+    mock_device_config.load_env_key.return_value = None
+    plugin._generate_with_gemini = MagicMock()
+
+    monkeypatch.setattr(
+        "plugins.ai_photo_stylist.ai_photo_stylist.random.choice",
+        lambda candidates: str(cached),
+    )
+
+    img = plugin.generate_image({
+        "imageFiles[]": [str(source)],
+        "randomizePhoto": "true",
+        "includeCachedInRandom": "true",
+        "fitMode": "fit",
+    }, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    mock_device_config.load_env_key.assert_not_called()
+    plugin._generate_with_gemini.assert_not_called()
 
 
 def test_vertical_orientation(plugin, mock_device_config):

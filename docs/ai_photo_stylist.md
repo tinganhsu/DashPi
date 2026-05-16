@@ -6,6 +6,7 @@ AI Photo Stylist is a built-in DashPi plugin that restyles your own photos with 
 
 - Upload photos inside the AI Photo Stylist settings page.
 - Select one uploaded photo, or let the plugin pick one randomly.
+- Optionally include cached generated images in the random photo pool and display them directly when selected.
 - Select a style from `vibe-pic.json`, or let the plugin pick one randomly.
 - Generate a new styled image with Gemini.
 - Save generated results to a local cache.
@@ -67,6 +68,7 @@ An optional `id` field may be provided. If omitted, DashPi derives one from the 
 
 - **Source Photo**: choose one uploaded photo.
 - **Random Photo**: pick a random uploaded photo each refresh.
+- **Include Cache in Random**: when Random Photo is enabled, also include generated cache files in the random pool. If a cached file is selected, DashPi displays it directly and skips Gemini generation.
 - **Vibe**: choose one style from `vibe-pic.json`.
 - **Random Vibe**: pick a random style each refresh.
 - **Extra Prompt**: append extra instructions to the selected vibe prompt.

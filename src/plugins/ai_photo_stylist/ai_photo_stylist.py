@@ -35,6 +35,7 @@ class AIPhotoStylist(BasePlugin):
             "expected_key": "GOOGLE_GEMINI_SECRET",
         }
         template_params["available_images"] = self._get_available_images()
+        template_params["cached_image_count"] = len(self._get_cached_image_paths())
 
         try:
             template_params["vibes"] = self._load_vibes()
@@ -48,15 +49,19 @@ class AIPhotoStylist(BasePlugin):
     def generate_image(self, settings, device_config):
         logger.info("=== AI Photo Stylist Plugin: Starting image generation ===")
 
-        api_key = device_config.load_env_key("GOOGLE_GEMINI_SECRET")
-        if not api_key:
-            raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
-
         dimensions = self._get_dimensions(device_config)
         fit_mode = settings.get("fitMode", "fit")
         show_caption = settings.get("showCaption") == "true"
 
-        image_path = self._select_source_image(settings)
+        image_path, is_cached_image = self._select_source_image(settings)
+        if is_cached_image:
+            logger.info(f"AI Photo Stylist selected cached image directly: {os.path.basename(image_path)}")
+            return self.image_loader.from_file(image_path, dimensions, resize=True, fit_mode=fit_mode)
+
+        api_key = device_config.load_env_key("GOOGLE_GEMINI_SECRET")
+        if not api_key:
+            raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
+
         vibe = self._select_vibe(settings)
         final_prompt = self._build_prompt(vibe, settings.get("customPrompt", ""))
         model = settings.get("geminiImageModel", DEFAULT_GEMINI_MODEL)
@@ -156,9 +161,14 @@ class AIPhotoStylist(BasePlugin):
             candidates = [path for path in image_paths if self._is_valid_upload_path(path)]
             if not candidates:
                 candidates = [item["path"] for item in self._get_available_images()]
+            cached_candidates = []
+            if settings.get("includeCachedInRandom") == "true":
+                cached_candidates = self._get_cached_image_paths()
+                candidates.extend(cached_candidates)
             if not candidates:
                 raise RuntimeError("No AI Photo Stylist images found. Upload photos in this plugin first.")
-            return random.choice(candidates)
+            selected = random.choice(candidates)
+            return selected, selected in cached_candidates
 
         image_path = settings.get("sourceImagePath") or (image_paths[0] if image_paths else "")
         if not image_path:
@@ -167,7 +177,7 @@ class AIPhotoStylist(BasePlugin):
             raise RuntimeError("Invalid source photo path.")
         if not os.path.isfile(image_path):
             raise RuntimeError("Selected source photo was not found. Re-select or upload it again.")
-        return image_path
+        return image_path, False
 
     def _select_vibe(self, settings):
         vibes = self._load_vibes()
@@ -243,17 +253,20 @@ class AIPhotoStylist(BasePlugin):
         return str(path)
 
     def _load_random_cached_image(self, dimensions, fit_mode):
-        cached_dir = self._cached_dir()
-        if not cached_dir.is_dir():
-            return None
-        candidates = [
-            str(path) for path in cached_dir.iterdir()
-            if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in IMAGE_EXTENSIONS
-        ]
+        candidates = self._get_cached_image_paths()
         if not candidates:
             return None
         image_path = random.choice(candidates)
         return self.image_loader.from_file(image_path, dimensions, resize=True, fit_mode=fit_mode)
+
+    def _get_cached_image_paths(self):
+        cached_dir = self._cached_dir()
+        if not cached_dir.is_dir():
+            return []
+        return [
+            str(path) for path in cached_dir.iterdir()
+            if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in IMAGE_EXTENSIONS
+        ]
 
     def _add_caption(self, image, image_path, vibe):
         img = image.convert("RGBA") if image.mode != "RGBA" else image

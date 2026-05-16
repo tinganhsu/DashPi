@@ -44,6 +44,18 @@
 </div>
 
 <div class="form-group">
+    <label for="includeCachedInRandom" class="form-label">Include Cache in Random:</label>
+    <div class="toggle-container">
+        <input type="hidden" name="includeCachedInRandom" value="false">
+        <input type="checkbox" id="includeCachedInRandom" name="includeCachedInRandom" class="toggle-checkbox" value="true">
+        <label for="includeCachedInRandom" class="toggle-label"></label>
+    </div>
+    <small style="flex-basis: 100%; margin-top: 2px; color: var(--text-secondary, #888);">
+        Cached images: {{ cached_image_count }}
+    </small>
+</div>
+
+<div class="form-group">
     <label for="vibeId" class="form-label">Vibe</label>
     <select id="vibeId" name="vibeId" class="form-input">
         {% for vibe in vibes %}
@@ -312,6 +324,7 @@
         if (loadPluginSettings) {
             document.getElementById('customPrompt').value = pluginSettings.customPrompt || '';
             document.getElementById('randomizePhoto').checked = pluginSettings.randomizePhoto === 'true';
+            document.getElementById('includeCachedInRandom').checked = pluginSettings.includeCachedInRandom === 'true';
             document.getElementById('randomizeVibe').checked = pluginSettings.randomizeVibe === 'true';
             document.getElementById('geminiImageModel').value = pluginSettings.geminiImageModel || 'gemini-2.5-flash-image';
             document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
