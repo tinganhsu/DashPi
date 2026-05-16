@@ -2,10 +2,11 @@
 
 All notable changes to DashPi are documented here.
 
-## [Unreleased]
+## [2.2] — 2026-05-16
 
 ### Added
 - **Weather plugin Traditional Chinese**: Added a display language setting to the Weather plugin settings page and localized weather copy, forecast labels, date formatting, OpenWeatherMap language selection, and geocoding titles for `zh-TW`.
+- **AI Photo Stylist plugin**: Added a Gemini-powered photo restyling plugin with private uploads, user-provided `vibe-pic.json` style prompts, generated-image caching, and cached-image fallback when the Gemini API fails.
 
 ## [2.1.6] — 2026-05-15
 

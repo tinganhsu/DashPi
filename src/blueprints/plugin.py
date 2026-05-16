@@ -7,9 +7,30 @@ from refresh_task import ManualRefresh
 import json
 import os
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 plugin_bp = Blueprint("plugin", __name__)
+
+AI_PHOTO_STYLIST_UPLOAD_DIR = os.path.join("static", "images", "ai_photo_stylist", "uploads")
+AI_PHOTO_STYLIST_SETTINGS_KEY = "plugin_last_settings_ai_photo_stylist"
+IMAGE_UPLOAD_EXTENSIONS = {'pdf', 'png', 'avif', 'jpg', 'jpeg', 'gif', 'webp', 'heif', 'heic'}
+
+
+def _is_path_in_dir(file_path, directory):
+    """Return True when file_path resolves inside directory."""
+    try:
+        abs_path = os.path.abspath(file_path)
+        abs_dir = os.path.abspath(directory)
+        return os.path.commonpath([abs_path, abs_dir]) == abs_dir
+    except (OSError, ValueError):
+        return False
+
+
+def _ai_photo_stylist_upload_dir():
+    upload_dir = resolve_path(AI_PHOTO_STYLIST_UPLOAD_DIR)
+    os.makedirs(upload_dir, exist_ok=True)
+    return upload_dir
 
 @plugin_bp.route('/plugin/<plugin_id>')
 def plugin_page(plugin_id):
@@ -244,6 +265,137 @@ def save_image_list():
         return jsonify({"success": True}), 200
     except Exception as e:
         logger.exception(f"Error saving image list: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@plugin_bp.route('/plugin/ai_photo_stylist/upload_image', methods=['POST'])
+def ai_photo_stylist_upload_image():
+    """Upload a photo into AI Photo Stylist's private source image directory."""
+    try:
+        file = request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({"error": "No file provided"}), 400
+
+        extension = os.path.splitext(file.filename)[1].replace('.', '').lower()
+        if extension not in IMAGE_UPLOAD_EXTENSIONS:
+            return jsonify({"error": f"File type .{extension} not allowed"}), 400
+
+        file_name = sanitize_filename(file.filename)
+        stem, ext = os.path.splitext(file_name)
+        upload_dir = _ai_photo_stylist_upload_dir()
+        file_path = os.path.join(upload_dir, file_name)
+        if os.path.exists(file_path):
+            file_path = os.path.join(upload_dir, f"{stem}_{int(time.time())}{ext}")
+            file_name = os.path.basename(file_path)
+
+        file.save(file_path)
+
+        try:
+            from PIL import Image
+            with Image.open(file_path) as img:
+                img.verify()
+        except Exception:
+            os.remove(file_path)
+            return jsonify({"error": "File is not a valid image"}), 400
+
+        if extension in {'jpg', 'jpeg'}:
+            try:
+                from PIL import Image, ImageOps
+                with Image.open(file_path) as img:
+                    w, h = img.size
+                    megapixels = (w * h) / 1_000_000
+                    if megapixels <= 50:
+                        transposed = ImageOps.exif_transpose(img)
+                        if transposed is not img:
+                            transposed.save(file_path)
+                            transposed.close()
+            except Exception as e:
+                logger.warning(f"AI Photo Stylist EXIF processing error for {file_name}: {e}")
+
+        logger.info(f"AI Photo Stylist uploaded image: {file_name} ({os.path.getsize(file_path)} bytes)")
+        return jsonify({"success": True, "file_path": file_path, "file_name": file_name}), 200
+
+    except Exception as e:
+        logger.exception(f"Error uploading AI Photo Stylist image: {str(e)}")
+        return jsonify({"error": "Upload failed"}), 500
+
+
+@plugin_bp.route('/plugin/ai_photo_stylist/check_files', methods=['POST'])
+def ai_photo_stylist_check_files():
+    """Check existence of files under AI Photo Stylist's private upload directory."""
+    try:
+        data = request.get_json() or {}
+        file_paths = data.get('file_paths', [])
+        upload_dir = _ai_photo_stylist_upload_dir()
+
+        result = {}
+        for file_path in file_paths:
+            if _is_path_in_dir(file_path, upload_dir):
+                result[file_path] = os.path.isfile(os.path.abspath(file_path))
+            else:
+                result[file_path] = False
+
+        return jsonify(result), 200
+    except Exception as e:
+        logger.exception(f"Error checking AI Photo Stylist files: {str(e)}")
+        return jsonify({"error": "Failed to check files"}), 500
+
+
+@plugin_bp.route('/plugin/ai_photo_stylist/delete_image', methods=['POST'])
+def ai_photo_stylist_delete_image():
+    """Delete one AI Photo Stylist upload and remove it from saved settings."""
+    device_config = current_app.config['DEVICE_CONFIG']
+    try:
+        data = request.get_json() or {}
+        file_path = data.get('file_path', '')
+        if not file_path:
+            return jsonify({"error": "No file path provided"}), 400
+
+        upload_dir = _ai_photo_stylist_upload_dir()
+        if not _is_path_in_dir(file_path, upload_dir):
+            return jsonify({"error": "Invalid file path"}), 403
+
+        abs_path = os.path.abspath(file_path)
+        if os.path.exists(abs_path):
+            os.remove(abs_path)
+            logger.info(f"Deleted AI Photo Stylist image: {os.path.basename(abs_path)}")
+
+        settings = device_config.get_config(AI_PHOTO_STYLIST_SETTINGS_KEY, default={})
+        file_list = settings.get("imageFiles[]", [])
+        if file_path in file_list:
+            file_list.remove(file_path)
+            settings["imageFiles[]"] = file_list
+            if settings.get("sourceImagePath") == file_path:
+                settings["sourceImagePath"] = file_list[0] if file_list else ""
+            device_config.update_value(AI_PHOTO_STYLIST_SETTINGS_KEY, settings, write=True)
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.exception(f"Error deleting AI Photo Stylist image: {str(e)}")
+        return jsonify({"error": f"Delete failed: {str(e)}"}), 500
+
+
+@plugin_bp.route('/plugin/ai_photo_stylist/save_image_list', methods=['POST'])
+def ai_photo_stylist_save_image_list():
+    """Persist the AI Photo Stylist upload list to plugin_last_settings."""
+    device_config = current_app.config['DEVICE_CONFIG']
+    try:
+        data = request.get_json() or {}
+        file_paths = data.get('file_paths', [])
+        if not isinstance(file_paths, list):
+            return jsonify({"error": "Invalid file_paths"}), 400
+
+        upload_dir = _ai_photo_stylist_upload_dir()
+        safe_paths = [path for path in file_paths if _is_path_in_dir(path, upload_dir)]
+        settings = device_config.get_config(AI_PHOTO_STYLIST_SETTINGS_KEY, default={})
+        settings["imageFiles[]"] = safe_paths
+        if settings.get("sourceImagePath") not in safe_paths:
+            settings["sourceImagePath"] = safe_paths[0] if safe_paths else ""
+        device_config.update_value(AI_PHOTO_STYLIST_SETTINGS_KEY, settings, write=True)
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        logger.exception(f"Error saving AI Photo Stylist image list: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
