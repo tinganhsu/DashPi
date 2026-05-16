@@ -2,13 +2,18 @@
 
 import logging
 import os
-from utils.app_utils import resolve_path
+from utils.app_utils import get_fonts, resolve_path
+from utils.image_utils import take_screenshot_html
 from utils.image_loader import AdaptiveImageLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+STATIC_DIR = resolve_path("static")
 PLUGINS_DIR = resolve_path("plugins")
+BASE_PLUGIN_DIR = os.path.join(PLUGINS_DIR, "base_plugin")
+BASE_PLUGIN_RENDER_DIR = os.path.join(BASE_PLUGIN_DIR, "render")
 
 FRAME_STYLES = [
     {
@@ -36,6 +41,14 @@ class BasePlugin:
 
         # Initialize adaptive image loader for device-aware image processing
         self.image_loader = AdaptiveImageLoader()
+
+        self.render_dir = self.get_plugin_dir("render")
+        if os.path.exists(self.render_dir):
+            loader = FileSystemLoader([self.render_dir, BASE_PLUGIN_RENDER_DIR])
+            self.env = Environment(
+                loader=loader,
+                autoescape=select_autoescape(['html', 'xml'])
+            )
 
     def generate_image(self, settings, device_config):
         raise NotImplementedError("generate_image must be implemented by subclasses")
@@ -87,3 +100,19 @@ class BasePlugin:
         template_params['frame_styles'] = FRAME_STYLES
         return template_params
 
+    def render_image(self, dimensions, html_file, css_file=None, template_params={}):
+        css_files = [os.path.join(BASE_PLUGIN_RENDER_DIR, "plugin.css")]
+        if css_file:
+            plugin_css = os.path.join(self.render_dir, css_file)
+            css_files.append(plugin_css)
+
+        template_params["style_sheets"] = css_files
+        template_params["width"] = dimensions[0]
+        template_params["height"] = dimensions[1]
+        template_params["font_faces"] = get_fonts()
+        template_params["static_dir"] = STATIC_DIR
+
+        template = self.env.get_template(html_file)
+        rendered_html = template.render(template_params)
+
+        return take_screenshot_html(rendered_html, dimensions)

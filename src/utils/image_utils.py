@@ -4,6 +4,9 @@ from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 from io import BytesIO
 import os
 import logging
+import shutil
+import subprocess
+import tempfile
 import zlib
 from utils.http_client import get_http_session
 
@@ -106,6 +109,88 @@ def compute_image_hash(image):
     if thumb.mode != "RGB":
         thumb = thumb.convert("RGB")
     return format(zlib.adler32(thumb.tobytes()) & 0xffffffff, '08x')
+
+def take_screenshot_html(html_str, dimensions, timeout_ms=None):
+    """Render an HTML string to a screenshot image using a temporary file."""
+    image = None
+    html_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as html_file:
+            html_file.write(html_str.encode("utf-8"))
+            html_file_path = html_file.name
+
+        image = take_screenshot(html_file_path, dimensions, timeout_ms)
+
+    except Exception as e:
+        logger.error(f"Failed to take screenshot: {str(e)}")
+    finally:
+        if html_file_path and os.path.exists(html_file_path):
+            os.remove(html_file_path)
+
+    return image
+
+def _find_chromium_binary():
+    """Find the first available Chromium-based binary in system PATH."""
+    candidates = ["chromium-headless-shell", "chromium", "chrome"]
+    for candidate in candidates:
+        path = shutil.which(candidate)
+        if path:
+            logger.debug(f"Found browser binary: {candidate} at {path}")
+            return candidate
+    return None
+
+def take_screenshot(target, dimensions, timeout_ms=None):
+    """Take a screenshot of a local HTML file or URL using headless Chromium."""
+    image = None
+    img_file_path = None
+    try:
+        browser = _find_chromium_binary()
+        if not browser:
+            logger.error("No Chromium-based browser found. Install chromium, chromium-headless-shell, or chrome.")
+            return None
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as img_file:
+            img_file_path = img_file.name
+
+        command = [
+            browser,
+            target,
+            "--headless",
+            f"--screenshot={img_file_path}",
+            f"--window-size={dimensions[0]},{dimensions[1]}",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--use-gl=swiftshader",
+            "--hide-scrollbars",
+            "--in-process-gpu",
+            "--js-flags=--jitless",
+            "--disable-zero-copy",
+            "--disable-gpu-memory-buffer-compositor-resources",
+            "--disable-extensions",
+            "--disable-plugins",
+            "--mute-audio",
+            "--renderer-process-limit=1",
+            "--no-zygote",
+            "--no-sandbox",
+        ]
+        if timeout_ms:
+            command.append(f"--timeout={timeout_ms}")
+
+        result = subprocess.run(command, capture_output=True, check=False)
+        if result.returncode != 0 or not os.path.exists(img_file_path):
+            logger.error(f"Failed to take screenshot (return code: {result.returncode})")
+            return None
+
+        with Image.open(img_file_path) as img:
+            image = img.copy()
+
+    except Exception as e:
+        logger.error(f"Failed to take screenshot: {str(e)}")
+    finally:
+        if img_file_path and os.path.exists(img_file_path):
+            os.remove(img_file_path)
+
+    return image
 
 def crossfade_frames(old_image, new_image, steps=10):
     """Generate crossfade blend frames between two images.
