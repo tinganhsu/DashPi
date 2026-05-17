@@ -390,7 +390,6 @@ class AIPhotoStylist(BasePlugin):
             (
                 "Use the input photo as the source image. Preserve the person's facial features and identity, "
                 "keep the subject stylized but recognizable, emphasize the face, and preserve the core pose and composition. "
-                "Create an artistic interpretation, not a photorealistic reproduction."
             ),
             (
                 "Optimize for a medium-resolution e-paper display with horizontal composition, landscape orientation, "
