@@ -97,6 +97,49 @@ def apply_image_enhancement(img, image_settings=None):
 
     return img
 
+def optimize_for_eink(image, display_type, settings=None):
+    """Apply conservative pre-processing for e-paper displays.
+
+    The optimizer keeps the input dimensions and avoids forcing grayscale so
+    Inky and color Waveshare panels can still map colors in their drivers.
+    """
+    if settings is None:
+        settings = {}
+    if settings.get("eink_optimization_enabled", True) is False:
+        return image
+
+    if not display_type:
+        return image
+
+    display_type = str(display_type).lower()
+    if not ("inky" in display_type or "waveshare" in display_type or "e-paper" in display_type):
+        return image
+
+    original_mode = image.mode
+    if image.mode == "L":
+        luminance = ImageOps.autocontrast(image, cutoff=1)
+        luminance = Image.blend(image, luminance, 0.65)
+        luminance = luminance.point(lambda p: int(5 + (p * 245 / 255)))
+        luminance = ImageEnhance.Contrast(luminance).enhance(1.08)
+        return ImageEnhance.Sharpness(luminance).enhance(1.15)
+
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    y, cb, cr = image.convert("YCbCr").split()
+    adjusted_y = ImageOps.autocontrast(y, cutoff=1)
+    adjusted_y = Image.blend(y, adjusted_y, 0.65)
+    adjusted_y = adjusted_y.point(lambda p: int(5 + (p * 245 / 255)))
+    adjusted_y = ImageEnhance.Contrast(adjusted_y).enhance(1.08)
+
+    optimized = Image.merge("YCbCr", (adjusted_y, cb, cr)).convert("RGB")
+    optimized = ImageEnhance.Contrast(optimized).enhance(1.04)
+    optimized = ImageEnhance.Sharpness(optimized).enhance(1.15)
+
+    if original_mode == "L":
+        return optimized.convert("L")
+    return optimized
+
 def compute_image_hash(image):
     """Compute fast non-cryptographic hash of an image for change detection.
 

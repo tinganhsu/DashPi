@@ -27,7 +27,7 @@ def _make_display_mock(has_backlight: bool):
     return d
 
 
-def _make_device_config(tmp_path, timezone="UTC", brightness_enabled=True):
+def _make_device_config(tmp_path, timezone="UTC", brightness_enabled=True, image_settings=None):
     cfg = MagicMock()
     cfg.get_resolution.return_value = (800, 480)
     cfg.current_image_file = str(tmp_path / "current.png")
@@ -37,6 +37,7 @@ def _make_device_config(tmp_path, timezone="UTC", brightness_enabled=True):
             "orientation": "horizontal",
             "timezone": timezone,
             "display_type": "mock",
+            "image_settings": image_settings or {},
             "output_dir": str(tmp_path / "mock_output"),
             "brightness_schedule": {
                 "enabled": brightness_enabled,
@@ -135,6 +136,31 @@ class TestEinkBrightness:
         eink.display_image.assert_called_once()
         eink.blank_display.assert_not_called()
 
+    def test_display_image_applies_eink_optimizer(self, tmp_path):
+        """E-ink displays should use the e-paper image optimizer before display."""
+        cfg = _make_device_config(tmp_path)
+        eink = _make_display_mock(has_backlight=False)
+        dm = _make_dm(cfg, eink)
+
+        with patch("display.display_manager.optimize_for_eink") as optimizer:
+            optimizer.side_effect = lambda image, display_type, settings: image
+            img = Image.new("RGB", (800, 480), "white")
+            dm.display_image(img)
+
+        optimizer.assert_called_once()
+
+    def test_display_image_skips_eink_optimizer_when_disabled(self, tmp_path):
+        """Disabled e-paper optimization should leave the e-ink path unchanged."""
+        cfg = _make_device_config(tmp_path, image_settings={"eink_optimization_enabled": False})
+        eink = _make_display_mock(has_backlight=False)
+        dm = _make_dm(cfg, eink)
+
+        with patch("display.display_manager.optimize_for_eink") as optimizer:
+            img = Image.new("RGB", (800, 480), "white")
+            dm.display_image(img)
+
+        optimizer.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # LCD (has backlight) contrast tests
@@ -153,6 +179,18 @@ class TestLcdBrightness:
             img = Image.new("RGB", (800, 480), "white")
             dm.display_image(img)
             spy.assert_called_once()
+
+    def test_display_image_does_not_apply_eink_optimizer(self, tmp_path):
+        """LCD displays should keep the existing image processing path."""
+        cfg = _make_device_config(tmp_path)
+        lcd = _make_display_mock(has_backlight=True)
+        dm = _make_dm(cfg, lcd)
+
+        with patch("display.display_manager.optimize_for_eink") as optimizer:
+            img = Image.new("RGB", (800, 480), "white")
+            dm.display_image(img)
+
+        optimizer.assert_not_called()
 
     def test_blank_display_called_when_brightness_zero(self, tmp_path):
         """If scheduled brightness is 0, blank_display() is called and image is not sent."""

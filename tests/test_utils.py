@@ -13,7 +13,8 @@ from utils.layout_utils import (
     calculate_grid, draw_rounded_rect, draw_progress_bar, draw_dotted_rect,
 )
 from utils.image_utils import (
-    resize_image, change_orientation, apply_image_enhancement, compute_image_hash,
+    resize_image, change_orientation, apply_image_enhancement, optimize_for_eink,
+    compute_image_hash,
 )
 from utils.time_utils import calculate_seconds
 
@@ -278,6 +279,50 @@ class TestApplyImageEnhancement:
         img = Image.new("RGBA", (100, 100), (255, 0, 0, 128))
         result = apply_image_enhancement(img)
         assert result.mode == "RGB"
+
+
+class TestOptimizeForEink:
+    def test_rgb_image_keeps_size_and_mode(self):
+        img = Image.new("RGB", (100, 80), (120, 110, 100))
+        result = optimize_for_eink(img, "Inky e-Paper")
+        assert result.size == img.size
+        assert result.mode == "RGB"
+
+    def test_luminance_image_keeps_size_and_mode(self):
+        img = Image.new("L", (100, 80), 120)
+        result = optimize_for_eink(img, "Waveshare e-Paper")
+        assert result.size == img.size
+        assert result.mode == "L"
+
+    def test_disabled_returns_original_image(self):
+        img = Image.new("RGB", (100, 80), "gray")
+        result = optimize_for_eink(
+            img,
+            "Inky e-Paper",
+            {"eink_optimization_enabled": False},
+        )
+        assert result is img
+
+    def test_lcd_display_type_returns_original_image(self):
+        img = Image.new("RGB", (100, 80), "gray")
+        result = optimize_for_eink(img, "LCD")
+        assert result is img
+
+    def test_waveshare_bicolor_layers_remain_one_bit(self):
+        from display.waveshare_display import split_image_for_bi_color_epd
+
+        img = Image.new("RGB", (100, 80), "white")
+        draw = ImageDraw.Draw(img)
+        draw.rectangle((0, 0, 49, 79), fill="black")
+        draw.rectangle((50, 0, 99, 79), fill="red")
+
+        optimized = optimize_for_eink(img, "Waveshare e-Paper")
+        black_layer, red_layer = split_image_for_bi_color_epd(optimized)
+
+        assert black_layer.size == img.size
+        assert red_layer.size == img.size
+        assert black_layer.mode == "1"
+        assert red_layer.mode == "1"
 
 
 class TestComputeImageHash:

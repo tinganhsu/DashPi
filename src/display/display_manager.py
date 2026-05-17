@@ -14,7 +14,13 @@ from datetime import datetime
 
 import pytz
 
-from utils.image_utils import resize_image, change_orientation, apply_image_enhancement, crossfade_frames
+from utils.image_utils import (
+    resize_image,
+    change_orientation,
+    apply_image_enhancement,
+    optimize_for_eink,
+    crossfade_frames,
+)
 from display.mock_display import MockDisplay
 
 logger = logging.getLogger(__name__)
@@ -144,6 +150,11 @@ class DisplayManager:
         effective_settings = (self.device_config.get_config("image_settings") or {}).copy()
         effective_settings["brightness"] = brightness
         image = apply_image_enhancement(image, effective_settings)
+        if (not self.display.has_backlight()
+                and effective_settings.get("eink_optimization_enabled", True)):
+            display_type = self.device_config.get_config("display_type", default="")
+            display_type_name = self.display.display_type_name()
+            image = optimize_for_eink(image, f"{display_type} {display_type_name}", effective_settings)
         return image
 
     def display_image(self, image, image_settings=None):

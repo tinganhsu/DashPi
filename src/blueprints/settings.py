@@ -102,11 +102,13 @@ def save_settings():
             except (TypeError, ValueError):
                 return default
 
-        image_settings = {
+        image_settings = dict(device_config.get_config("image_settings") or {})
+        image_settings.update({
             "saturation": _clamp_float(form_data.get("saturation"), 1.0),
             "sharpness": _clamp_float(form_data.get("sharpness"), 1.0),
             "contrast": _clamp_float(form_data.get("contrast"), 1.0),
-        }
+            "eink_optimization_enabled": "einkOptimizationEnabled" in form_data,
+        })
         if "inkySaturation" in form_data:
             image_settings["inky_saturation"] = _clamp_float(form_data.get("inkySaturation"), 0.5)
 

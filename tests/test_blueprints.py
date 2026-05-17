@@ -159,6 +159,33 @@ class TestSettingsBlueprint:
         assert resp.status_code == 200
         assert resp.get_json()["success"] is True
 
+    def test_save_settings_preserves_unposted_image_settings(self, client, flask_app):
+        cfg = flask_app.config["DEVICE_CONFIG"]
+        cfg.get_config.side_effect = lambda key=None, default=None: (
+            {"future_profile": "safe", "inky_saturation": 0.7}
+            if key == "image_settings"
+            else "US/Central"
+            if key == "timezone"
+            else {}
+        )
+
+        resp = client.post("/save_settings", data={
+            "deviceName": "TestPi",
+            "orientation": "horizontal",
+            "timezoneName": "US/Central",
+            "timeFormat": "12h",
+            "saturation": "1.0",
+            "sharpness": "1.0",
+            "contrast": "1.0",
+            "einkOptimizationEnabled": "on",
+        })
+
+        assert resp.status_code == 200
+        saved_settings = cfg.update_config.call_args.args[0]
+        assert saved_settings["image_settings"]["future_profile"] == "safe"
+        assert saved_settings["image_settings"]["inky_saturation"] == 0.7
+        assert saved_settings["image_settings"]["eink_optimization_enabled"] is True
+
     def test_save_settings_missing_timezone(self, client):
         resp = client.post("/save_settings", data={
             "timeFormat": "12h",
