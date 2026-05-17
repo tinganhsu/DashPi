@@ -5,9 +5,11 @@ from pathlib import Path
 from plugins.base_plugin.base_plugin import BasePlugin
 from PIL import Image, ImageDraw, ImageFont
 from utils.app_utils import get_font, resolve_path, sanitize_filename
+import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -21,6 +23,9 @@ GEMINI_IMAGE_MODELS = [
     "gemini-3.1-flash-image-preview",
 ]
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
+OPENAI_IMAGE_MODELS = ["gpt-image-2", "gpt-image-1"]
+DEFAULT_OPENAI_MODEL = "gpt-image-2"
+OPENAI_IMAGE_QUALITIES = {"auto", "low", "medium", "high"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heif", ".heic", ".avif"}
 USAGE_STATE_VERSION = 1
 LEGACY_USAGE_HISTORY_KEY = "styleUsageHistory"
@@ -33,8 +38,8 @@ class AIPhotoStylist(BasePlugin):
         template_params = super().generate_settings_template()
         template_params["api_key"] = {
             "required": True,
-            "service": "Google Gemini",
-            "expected_key": "GOOGLE_GEMINI_SECRET",
+            "service": "OpenAI or Google Gemini",
+            "expected_key": "OPEN_AI_SECRET or GOOGLE_GEMINI_SECRET",
         }
         template_params["available_images"] = self._get_available_images()
         template_params["cached_images"] = self._get_cached_images()
@@ -62,18 +67,31 @@ class AIPhotoStylist(BasePlugin):
             logger.info(f"AI Photo Stylist selected cached image directly: {os.path.basename(image_path)}")
             return self.image_loader.from_file(image_path, dimensions, resize=True, fit_mode=fit_mode)
 
-        api_key = device_config.load_env_key("GOOGLE_GEMINI_SECRET")
-        if not api_key:
-            raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
-
         vibe = self._select_vibe(settings, image_path)
         final_prompt = self._build_prompt(vibe, settings.get("customPrompt", ""))
-        model = settings.get("geminiImageModel", DEFAULT_GEMINI_MODEL)
-        if model not in GEMINI_IMAGE_MODELS:
-            raise RuntimeError("Invalid Gemini image model provided.")
+        provider = settings.get("provider", "gemini")
 
         try:
-            generated = self._generate_with_gemini(api_key, model, image_path, final_prompt, dimensions)
+            if provider == "openai":
+                api_key = device_config.load_env_key("OPEN_AI_SECRET")
+                if not api_key:
+                    raise RuntimeError("OpenAI API Key not configured. Add OPEN_AI_SECRET in Settings > API Keys.")
+                model = settings.get("openaiImageModel", DEFAULT_OPENAI_MODEL)
+                if model not in OPENAI_IMAGE_MODELS:
+                    raise RuntimeError("Invalid OpenAI image model provided.")
+                quality = self._normalize_openai_quality(settings.get("openaiImageQuality", "medium"))
+                generated = self._generate_with_openai(api_key, model, image_path, final_prompt, dimensions, quality)
+            elif provider == "gemini":
+                api_key = device_config.load_env_key("GOOGLE_GEMINI_SECRET")
+                if not api_key:
+                    raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
+                model = settings.get("geminiImageModel", DEFAULT_GEMINI_MODEL)
+                if model not in GEMINI_IMAGE_MODELS:
+                    raise RuntimeError("Invalid Gemini image model provided.")
+                generated = self._generate_with_gemini(api_key, model, image_path, final_prompt, dimensions)
+            else:
+                raise RuntimeError("Invalid AI provider provided.")
+
             cached_path = self._save_cached_image(generated, image_path, vibe)
             self._mark_style_used(settings, image_path, vibe)
             logger.info(f"Cached generated image: {cached_path}")
@@ -396,6 +414,122 @@ class AIPhotoStylist(BasePlugin):
                     return image
 
         raise RuntimeError("Gemini returned no image in response.")
+
+    def _generate_with_openai(self, api_key, model, image_path, prompt, dimensions, quality):
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("OpenAI SDK not installed. Run: pip install openai") from exc
+
+        api_key = api_key.encode("ascii", errors="ignore").decode("ascii").strip()
+        client = OpenAI(api_key=api_key)
+
+        size = self._openai_size_for_model(model, dimensions)
+        request_args = {
+            "model": model,
+            "prompt": prompt,
+            "image": self._openai_image_file(image_path),
+            "quality": quality,
+            "size": size,
+        }
+        if model == "gpt-image-1":
+            request_args["input_fidelity"] = "high"
+
+        logger.info(f"OpenAI Photo Stylist settings: model={model}, quality={quality}, size={size}")
+
+        try:
+            response = client.images.edit(**request_args)
+        finally:
+            request_args["image"].close()
+
+        return self._openai_response_to_image(response)
+
+    def _openai_response_to_image(self, response):
+        image_base64 = getattr(response.data[0], "b64_json", None)
+        if image_base64:
+            buf = BytesIO(base64.b64decode(image_base64))
+            image = Image.open(buf).convert("RGB").copy()
+            buf.close()
+            return image
+
+        image_url = getattr(response.data[0], "url", None)
+        if image_url:
+            from utils.http_client import get_http_session
+            session = get_http_session()
+            download = session.get(image_url, timeout=30)
+            download.raise_for_status()
+            buf = BytesIO(download.content)
+            image = Image.open(buf).convert("RGB").copy()
+            buf.close()
+            return image
+
+        raise RuntimeError("OpenAI returned no image data.")
+
+    def _openai_image_file(self, image_path):
+        buf = BytesIO()
+        with Image.open(image_path) as input_image:
+            input_image.convert("RGB").save(buf, format="PNG")
+        buf.seek(0)
+        buf.name = "source.png"
+        return buf
+
+    def _openai_size_for_model(self, model, dimensions):
+        width, height = dimensions
+        if width <= 0 or height <= 0:
+            return "1024x1024"
+
+        if model == "gpt-image-1":
+            ratio = width / height
+            if 0.85 <= ratio <= 1.15:
+                return "1024x1024"
+            return "1536x1024" if ratio > 1 else "1024x1536"
+
+        return self._openai_gpt_image_2_size(width, height)
+
+    def _openai_gpt_image_2_size(self, width, height):
+        max_edge = 3840
+        min_pixels = 655360
+        max_pixels = 8294400
+        ratio = width / height
+
+        if ratio > 3:
+            width = height * 3
+        elif ratio < 1 / 3:
+            height = width * 3
+
+        pixels = width * height
+        scale = math.sqrt(min_pixels / pixels) if pixels < min_pixels else 1
+        if max(width, height) * scale > max_edge:
+            scale = max_edge / max(width, height)
+        if width * height * scale * scale > max_pixels:
+            scale = math.sqrt(max_pixels / (width * height))
+
+        target_w = self._round_up_to_multiple(width * scale, 16)
+        target_h = self._round_up_to_multiple(height * scale, 16)
+
+        while target_w * target_h < min_pixels:
+            if target_w <= target_h:
+                target_w += 16
+            else:
+                target_h += 16
+        while target_w * target_h > max_pixels or max(target_w, target_h) > max_edge:
+            if target_w >= target_h and target_w > 16:
+                target_w -= 16
+            elif target_h > 16:
+                target_h -= 16
+            else:
+                break
+
+        return f"{int(target_w)}x{int(target_h)}"
+
+    @staticmethod
+    def _round_up_to_multiple(value, multiple):
+        return int(math.ceil(value / multiple) * multiple)
+
+    @staticmethod
+    def _normalize_openai_quality(quality):
+        quality = (quality or "medium").strip().lower()
+        return quality if quality in OPENAI_IMAGE_QUALITIES else "medium"
 
     def _save_cached_image(self, image, image_path, vibe):
         cached_dir = self._cached_dir()

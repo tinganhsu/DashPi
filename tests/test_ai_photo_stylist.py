@@ -87,6 +87,18 @@ def test_missing_gemini_key_raises(plugin, mock_device_config, tmp_path):
         plugin.generate_image({"imageFiles[]": [str(img_path)]}, mock_device_config)
 
 
+def test_missing_openai_key_raises(plugin, mock_device_config, tmp_path):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = None
+
+    with pytest.raises(RuntimeError, match="OpenAI API Key"):
+        plugin.generate_image({
+            "provider": "openai",
+            "imageFiles[]": [str(img_path)],
+        }, mock_device_config)
+
+
 def test_generate_image_caches_success(plugin, mock_device_config):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -102,6 +114,31 @@ def test_generate_image_caches_success(plugin, mock_device_config):
     assert_valid_image(img, (800, 480))
     cached = list(plugin._test_cached_dir.glob("*.png"))
     assert len(cached) == 1
+
+
+def test_generate_image_uses_openai_provider(plugin, mock_device_config):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = "openai-key"
+    plugin._generate_with_openai = MagicMock(return_value=Image.new("RGB", (1024, 640), "green"))
+    plugin._generate_with_gemini = MagicMock()
+
+    img = plugin.generate_image({
+        "provider": "openai",
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "openaiImageModel": "gpt-image-2",
+        "openaiImageQuality": "high",
+        "fitMode": "fit",
+    }, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    mock_device_config.load_env_key.assert_called_with("OPEN_AI_SECRET")
+    plugin._generate_with_openai.assert_called_once()
+    args = plugin._generate_with_openai.call_args.args
+    assert args[1] == "gpt-image-2"
+    assert args[5] == "high"
+    plugin._generate_with_gemini.assert_not_called()
 
 
 def test_generation_error_uses_cached_fallback(plugin, mock_device_config):
@@ -342,6 +379,26 @@ def test_vertical_orientation(plugin, mock_device_config):
     img = plugin.generate_image({"imageFiles[]": [str(img_path)]}, mock_device_config)
 
     assert_valid_image(img, (480, 800))
+
+
+def test_openai_size_selection(plugin):
+    assert plugin._openai_size_for_model("gpt-image-1", (800, 480)) == "1536x1024"
+    assert plugin._openai_size_for_model("gpt-image-1", (480, 800)) == "1024x1536"
+    assert plugin._openai_size_for_model("gpt-image-1", (700, 700)) == "1024x1024"
+
+    gpt_image_2_size = plugin._openai_size_for_model("gpt-image-2", (800, 480))
+    width, height = [int(part) for part in gpt_image_2_size.split("x")]
+    assert width % 16 == 0
+    assert height % 16 == 0
+    assert 655360 <= width * height <= 8294400
+    assert max(width, height) <= 3840
+    assert width > height
+
+
+def test_openai_quality_normalization(plugin):
+    assert plugin._normalize_openai_quality("high") == "high"
+    assert plugin._normalize_openai_quality("AUTO") == "auto"
+    assert plugin._normalize_openai_quality("invalid") == "medium"
 
 
 def test_cleanup_only_removes_plugin_uploads(plugin, tmp_path):

@@ -91,12 +91,39 @@
 </div>
 
 <div class="form-group">
-    <label for="geminiImageModel" class="form-label">Image Model</label>
+    <label for="provider" class="form-label">AI Provider</label>
+    <select id="provider" name="provider" class="form-input" onchange="toggleProviderOptions()">
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+    </select>
+</div>
+
+<div id="geminiOptions" class="form-group dropdown-container">
+    <label for="geminiImageModel" class="form-label">Gemini Model</label>
     <select id="geminiImageModel" name="geminiImageModel" class="form-input">
         <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
         <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image Preview</option>
         <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image Preview</option>
     </select>
+</div>
+
+<div id="openaiOptions" class="form-group dropdown-container" style="display: none;">
+    <div class="form-group">
+        <label for="openaiImageModel" class="form-label">OpenAI Model</label>
+        <select id="openaiImageModel" name="openaiImageModel" class="form-input">
+            <option value="gpt-image-2">GPT Image 2</option>
+            <option value="gpt-image-1">GPT Image 1</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="openaiImageQuality" class="form-label">Quality</label>
+        <select id="openaiImageQuality" name="openaiImageQuality" class="form-input">
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+            <option value="auto">Auto</option>
+        </select>
+    </div>
 </div>
 
 <div class="form-group">
@@ -120,6 +147,12 @@
     const discoveredImages = {{ available_images | tojson }};
     const cachedImages = {{ cached_images | tojson }};
     let uploadsInProgress = 0;
+
+    function toggleProviderOptions() {
+        const provider = document.getElementById("provider").value;
+        document.getElementById("geminiOptions").style.display = provider === "gemini" ? "flex" : "none";
+        document.getElementById("openaiOptions").style.display = provider === "openai" ? "flex" : "none";
+    }
 
     function fileNameFromPath(filePath) {
         return filePath.split('/').pop();
@@ -388,15 +421,19 @@
 
         if (loadPluginSettings) {
             document.getElementById('customPrompt').value = pluginSettings.customPrompt || '';
+            document.getElementById('provider').value = pluginSettings.provider || 'gemini';
             document.getElementById('randomizePhoto').checked = pluginSettings.randomizePhoto === 'true';
             document.getElementById('includeCachedInRandom').checked = pluginSettings.includeCachedInRandom === 'true';
             document.getElementById('randomizeVibe').checked = pluginSettings.randomizeVibe === 'true';
             document.getElementById('geminiImageModel').value = pluginSettings.geminiImageModel || 'gemini-2.5-flash-image';
+            document.getElementById('openaiImageModel').value = pluginSettings.openaiImageModel || 'gpt-image-2';
+            document.getElementById('openaiImageQuality').value = pluginSettings.openaiImageQuality || 'medium';
             document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
             document.getElementById('showCaption').checked = pluginSettings.showCaption === 'true';
             if (pluginSettings.vibeId) {
                 document.getElementById('vibeId').value = pluginSettings.vibeId;
             }
         }
+        toggleProviderOptions();
     });
 </script>
