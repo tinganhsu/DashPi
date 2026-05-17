@@ -371,8 +371,24 @@ class AIPhotoStylist(BasePlugin):
     def _build_prompt(self, vibe, custom_prompt):
         prompt_parts = [
             vibe["prompt"],
-            "Use the input photo as the source image. Preserve the main subject identity, pose, and core composition.",
-            "Do not add text, captions, watermarks, logos, borders, or frames.",
+            (
+                "Use the input photo as the source image. Preserve the person's facial features and identity, "
+                "keep the subject stylized but recognizable, emphasize the face, and preserve the core pose and composition. "
+                "Create an artistic interpretation, not a photorealistic reproduction."
+            ),
+            (
+                "Optimize for a medium-resolution e-paper display with horizontal composition, landscape orientation, "
+                "a simple clean background, strong subject separation, high contrast, limited tonal range, clean edges, "
+                "minimal visual clutter, and readability at a glance."
+            ),
+            "Avoid tiny details that disappear on e-paper.",
+            "Recompose the image to fully fill the requested aspect ratio edge to edge. Extend or regenerate the background naturally.",
+            (
+                "Negative prompt: text, typography, letters, captions, watermark, logo, signature, cluttered background, "
+                "busy patterns, low contrast, blurry face, distorted facial features, extra limbs, extra fingers, "
+                "photorealistic noise, overly detailed background, tiny unreadable details, empty side margins, "
+                "pillarboxing, letterboxing, white space, borders, framed areas."
+            ),
         ]
         custom_prompt = (custom_prompt or "").strip()
         if custom_prompt:
