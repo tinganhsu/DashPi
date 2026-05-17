@@ -2,6 +2,11 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.2.2] — 2026-05-18
+
+### Added
+- **AI Photo Stylist thumbnails**: Added lazy-loaded thumbnail previews for uploaded source photos and cached generated artwork. New uploads create lightweight browser-generated thumbnails so Raspberry Pi avoids doing resize work when opening the plugin settings page.
+
 ## [2.2.1] — 2026-05-17
 
 ### Changed
