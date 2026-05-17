@@ -2,6 +2,11 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.2.3] — 2026-05-18
+
+### Fixed
+- **AI Photo Stylist thumbnails**: Prevented thumbnail previews from inheriting the dark-mode image inversion filter, so uploaded photos and cached artwork no longer appear as negative images.
+
 ## [2.2.2] — 2026-05-18
 
 ### Added
