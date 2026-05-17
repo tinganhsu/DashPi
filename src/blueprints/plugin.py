@@ -5,6 +5,7 @@ from plugins.plugin_registry import get_plugin_instance
 from utils.app_utils import resolve_path, handle_request_files, parse_form, sanitize_filename
 from refresh_task import ManualRefresh
 from io import BytesIO
+from urllib.parse import quote
 import json
 import os
 import logging
@@ -16,6 +17,7 @@ plugin_bp = Blueprint("plugin", __name__)
 
 AI_PHOTO_STYLIST_UPLOAD_DIR = os.path.join("static", "images", "ai_photo_stylist", "uploads")
 AI_PHOTO_STYLIST_CACHED_DIR = os.path.join("static", "images", "ai_photo_stylist", "cached")
+AI_PHOTO_STYLIST_THUMB_DIR = os.path.join(AI_PHOTO_STYLIST_UPLOAD_DIR, "thumbs")
 AI_PHOTO_STYLIST_SETTINGS_KEY = "plugin_last_settings_ai_photo_stylist"
 IMAGE_UPLOAD_EXTENSIONS = {'pdf', 'png', 'avif', 'jpg', 'jpeg', 'gif', 'webp', 'heif', 'heic'}
 
@@ -40,6 +42,30 @@ def _ai_photo_stylist_cached_dir():
     cached_dir = resolve_path(AI_PHOTO_STYLIST_CACHED_DIR)
     os.makedirs(cached_dir, exist_ok=True)
     return cached_dir
+
+
+def _ai_photo_stylist_thumb_dir():
+    thumb_dir = resolve_path(AI_PHOTO_STYLIST_THUMB_DIR)
+    os.makedirs(thumb_dir, exist_ok=True)
+    return thumb_dir
+
+
+def _static_url_for_path(file_path):
+    try:
+        static_dir = os.path.abspath(resolve_path("static"))
+        abs_path = os.path.abspath(file_path)
+        rel_path = os.path.relpath(abs_path, static_dir)
+        if rel_path.startswith(".."):
+            return ""
+        return "/static/" + "/".join(quote(part) for part in rel_path.split(os.sep))
+    except (OSError, ValueError):
+        return ""
+
+
+def _ai_photo_stylist_thumb_path_for(file_name):
+    stem = os.path.splitext(file_name)[0]
+    thumb_name = f"{sanitize_filename(stem) or 'photo'}.jpg"
+    return os.path.join(_ai_photo_stylist_thumb_dir(), thumb_name)
 
 
 def _is_allowed_image_file(file_path):
@@ -285,6 +311,7 @@ def save_image_list():
 @plugin_bp.route('/plugin/ai_photo_stylist/upload_image', methods=['POST'])
 def ai_photo_stylist_upload_image():
     """Upload a photo into AI Photo Stylist's private source image directory."""
+    file_path = ""
     try:
         file = request.files.get('file')
         if not file or not file.filename:
@@ -327,9 +354,36 @@ def ai_photo_stylist_upload_image():
                 logger.warning(f"AI Photo Stylist EXIF processing error for {file_name}: {e}")
 
         logger.info(f"AI Photo Stylist uploaded image: {file_name} ({os.path.getsize(file_path)} bytes)")
-        return jsonify({"success": True, "file_path": file_path, "file_name": file_name}), 200
+        thumbnail_url = _static_url_for_path(file_path)
+        thumbnail = request.files.get('thumbnail')
+        if thumbnail and thumbnail.filename:
+            thumb_path = _ai_photo_stylist_thumb_path_for(file_name)
+            thumbnail.save(thumb_path)
+            try:
+                from PIL import Image
+                with Image.open(thumb_path) as img:
+                    img.verify()
+            except Exception:
+                if os.path.exists(thumb_path):
+                    os.remove(thumb_path)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                return jsonify({"error": "Thumbnail is not a valid image"}), 400
+            thumbnail_url = _static_url_for_path(thumb_path)
+
+        return jsonify({
+            "success": True,
+            "file_path": file_path,
+            "file_name": file_name,
+            "thumbnail_url": thumbnail_url,
+        }), 200
 
     except Exception as e:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
         logger.exception(f"Error uploading AI Photo Stylist image: {str(e)}")
         return jsonify({"error": "Upload failed"}), 500
 
@@ -378,6 +432,11 @@ def ai_photo_stylist_delete_image():
         if os.path.isfile(abs_path):
             os.remove(abs_path)
             logger.info(f"Deleted AI Photo Stylist image: {os.path.basename(abs_path)}")
+        if is_upload:
+            thumb_path = _ai_photo_stylist_thumb_path_for(os.path.basename(abs_path))
+            if os.path.isfile(thumb_path):
+                os.remove(thumb_path)
+                logger.info(f"Deleted AI Photo Stylist thumbnail: {os.path.basename(thumb_path)}")
 
         if is_upload:
             settings = device_config.get_config(AI_PHOTO_STYLIST_SETTINGS_KEY, default={})

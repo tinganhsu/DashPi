@@ -86,6 +86,34 @@ def test_settings_template_includes_cached_image_count(plugin):
     assert [item["name"] for item in template["cached_images"]] == ["first.png", "second.jpg"]
 
 
+def test_settings_template_includes_upload_thumbnail_urls(plugin):
+    upload = plugin._test_upload_dir / "source.png"
+    thumb_dir = plugin._test_upload_dir / "thumbs"
+    thumb_dir.mkdir()
+    thumb = thumb_dir / "source.jpg"
+    _create_test_image(upload)
+    _create_test_image(thumb, size=(40, 30), color="green")
+
+    template = plugin.generate_settings_template()
+
+    assert template["available_images"][0]["name"] == "source.png"
+    assert template["available_images"][0]["thumbnail_url"].endswith(
+        "/static/images/ai_photo_stylist/uploads/thumbs/source.jpg"
+    )
+
+
+def test_settings_template_includes_cached_thumbnail_urls(plugin):
+    cached = plugin._test_cached_dir / "cached.png"
+    _create_test_image(cached)
+
+    template = plugin.generate_settings_template()
+
+    assert template["cached_images"][0]["name"] == "cached.png"
+    assert template["cached_images"][0]["thumbnail_url"].endswith(
+        "/static/images/ai_photo_stylist/cached/cached.png"
+    )
+
+
 def test_missing_gemini_key_raises(plugin, mock_device_config, tmp_path):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -527,3 +555,84 @@ def test_delete_cached_image_does_not_update_upload_settings(client, monkeypatch
     assert resp.status_code == 200
     assert not cached_file.exists()
     mock_device_config.update_value.assert_not_called()
+
+
+def test_upload_ai_photo_stylist_image_saves_thumbnail(client, monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    cached_dir = tmp_path / "cached"
+    thumb_dir = upload_dir / "thumbs"
+    upload_dir.mkdir()
+    cached_dir.mkdir()
+    thumb_dir.mkdir()
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        lambda: str(upload_dir),
+    )
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_thumb_dir",
+        lambda: str(thumb_dir),
+    )
+
+    original = BytesIO()
+    Image.new("RGB", (120, 80), "blue").save(original, format="PNG")
+    original.seek(0)
+    thumbnail = BytesIO()
+    Image.new("RGB", (40, 30), "green").save(thumbnail, format="JPEG")
+    thumbnail.seek(0)
+
+    resp = client.post(
+        "/plugin/ai_photo_stylist/upload_image",
+        data={
+            "file": (original, "source.png"),
+            "thumbnail": (thumbnail, "source.jpg"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert (upload_dir / "source.png").exists()
+    assert (thumb_dir / "source.jpg").exists()
+    assert "thumbnail_url" in data
+
+
+def test_delete_upload_image_removes_thumbnail(client, monkeypatch, mock_device_config, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    cached_dir = tmp_path / "cached"
+    thumb_dir = upload_dir / "thumbs"
+    upload_dir.mkdir()
+    cached_dir.mkdir()
+    thumb_dir.mkdir()
+    upload_file = upload_dir / "source.png"
+    thumb_file = thumb_dir / "source.jpg"
+    _create_test_image(upload_file)
+    _create_test_image(thumb_file, size=(40, 30), color="green")
+    mock_device_config.get_config.return_value = {"imageFiles[]": [str(upload_file)]}
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        lambda: str(upload_dir),
+    )
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_thumb_dir",
+        lambda: str(thumb_dir),
+    )
+
+    resp = client.post(
+        "/plugin/ai_photo_stylist/delete_image",
+        json={"file_path": str(upload_file)},
+    )
+
+    assert resp.status_code == 200
+    assert not upload_file.exists()
+    assert not thumb_file.exists()

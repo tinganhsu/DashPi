@@ -5,6 +5,7 @@ from pathlib import Path
 from plugins.base_plugin.base_plugin import BasePlugin
 from PIL import Image, ImageDraw, ImageFont
 from utils.app_utils import get_font, resolve_path, sanitize_filename
+from urllib.parse import quote
 import base64
 import hashlib
 import json
@@ -132,6 +133,7 @@ class AIPhotoStylist(BasePlugin):
             images.append({
                 "name": path.name,
                 "path": str(path),
+                "thumbnail_url": self._thumbnail_url_for_upload(path),
             })
         return images
 
@@ -147,8 +149,39 @@ class AIPhotoStylist(BasePlugin):
             images.append({
                 "name": path.name,
                 "path": str(path),
+                "thumbnail_url": self._static_url_for_path(path),
             })
         return images
+
+    def _thumbnail_url_for_upload(self, path):
+        thumb_path = self._thumbnail_dir() / f"{path.stem}.jpg"
+        if thumb_path.is_file():
+            return self._static_url_for_path(thumb_path)
+        return self._static_url_for_path(path)
+
+    @staticmethod
+    def _static_url_for_path(path):
+        try:
+            static_dir = Path(resolve_path("static")).resolve()
+            resolved = Path(path).resolve()
+            rel_path = resolved.relative_to(static_dir)
+            return "/static/" + "/".join(quote(part) for part in rel_path.parts)
+        except (OSError, ValueError):
+            pass
+
+        known_dirs = [
+            (AIPhotoStylist._thumbnail_dir(), ("images", "ai_photo_stylist", "uploads", "thumbs")),
+            (AIPhotoStylist._upload_dir(), ("images", "ai_photo_stylist", "uploads")),
+            (AIPhotoStylist._cached_dir(), ("images", "ai_photo_stylist", "cached")),
+        ]
+        for base_dir, static_parts in known_dirs:
+            try:
+                resolved = Path(path).resolve()
+                rel_path = resolved.relative_to(base_dir.resolve())
+                return "/static/" + "/".join(quote(part) for part in (*static_parts, *rel_path.parts))
+            except (OSError, ValueError):
+                continue
+        return ""
 
     def _load_vibes(self):
         vibes_path = Path(self.get_plugin_dir(os.path.join("resources", "vibe-pic.json")))
@@ -641,6 +674,10 @@ class AIPhotoStylist(BasePlugin):
     @staticmethod
     def _upload_dir():
         return Path(resolve_path(os.path.join("static", "images", "ai_photo_stylist", "uploads")))
+
+    @staticmethod
+    def _thumbnail_dir():
+        return AIPhotoStylist._upload_dir() / "thumbs"
 
     @staticmethod
     def _cached_dir():
