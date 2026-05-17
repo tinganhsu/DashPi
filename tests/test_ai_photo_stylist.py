@@ -66,6 +66,14 @@ def test_loads_user_vibe_pic_format(plugin):
     assert vibes[0]["name"] == "浮世繪風格 (Ukiyo-e)"
 
 
+def test_vibe_prompts_do_not_hardcode_display_orientation(plugin):
+    prompts = " ".join(vibe["prompt"].lower() for vibe in plugin._load_vibes())
+    assert "horizontal composition" not in prompts
+    assert "landscape orientation" not in prompts
+    assert "vertical composition" not in prompts
+    assert "portrait orientation" not in prompts
+
+
 def test_settings_template_includes_cached_image_count(plugin):
     _create_test_image(plugin._test_cached_dir / "first.png")
     _create_test_image(plugin._test_cached_dir / "second.jpg")
@@ -114,6 +122,9 @@ def test_generate_image_caches_success(plugin, mock_device_config):
     assert_valid_image(img, (800, 480))
     cached = list(plugin._test_cached_dir.glob("*.png"))
     assert len(cached) == 1
+    prompt = plugin._generate_with_gemini.call_args.args[3]
+    assert "horizontal composition, landscape orientation" in prompt
+    assert "vertical composition, portrait orientation" not in prompt
 
 
 def test_custom_vibe_prompt_overrides_selected_vibe(plugin, mock_device_config):
@@ -401,6 +412,9 @@ def test_vertical_orientation(plugin, mock_device_config):
     img = plugin.generate_image({"imageFiles[]": [str(img_path)]}, mock_device_config)
 
     assert_valid_image(img, (480, 800))
+    prompt = plugin._generate_with_gemini.call_args.args[3]
+    assert "vertical composition, portrait orientation" in prompt
+    assert "horizontal composition, landscape orientation" not in prompt
 
 
 def test_openai_size_selection(plugin):

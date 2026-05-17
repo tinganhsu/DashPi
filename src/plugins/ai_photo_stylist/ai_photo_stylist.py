@@ -68,7 +68,8 @@ class AIPhotoStylist(BasePlugin):
             return self.image_loader.from_file(image_path, dimensions, resize=True, fit_mode=fit_mode)
 
         vibe = self._select_vibe(settings, image_path)
-        final_prompt = self._build_prompt(vibe, settings.get("customPrompt", ""))
+        orientation = device_config.get_config("orientation")
+        final_prompt = self._build_prompt(vibe, settings.get("customPrompt", ""), orientation)
         provider = settings.get("provider", "gemini")
 
         try:
@@ -384,7 +385,11 @@ class AIPhotoStylist(BasePlugin):
             resolved_path = str(image_path)
         return hashlib.sha1(resolved_path.encode("utf-8")).hexdigest()[:16]
 
-    def _build_prompt(self, vibe, custom_prompt):
+    def _build_prompt(self, vibe, custom_prompt, orientation="horizontal"):
+        composition = "vertical composition, portrait orientation"
+        if orientation != "vertical":
+            composition = "horizontal composition, landscape orientation"
+
         prompt_parts = [
             vibe["prompt"],
             (
@@ -392,7 +397,7 @@ class AIPhotoStylist(BasePlugin):
                 "keep the subject stylized but recognizable, emphasize the face, and preserve the core pose and composition. "
             ),
             (
-                "Optimize for a medium-resolution e-paper display with horizontal composition, landscape orientation, "
+                f"Optimize for a medium-resolution e-paper display with {composition}, "
                 "a simple clean background, strong subject separation, high contrast, limited tonal range, clean edges, "
                 "minimal visual clutter, and readability at a glance."
             ),
