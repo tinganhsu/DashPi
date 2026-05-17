@@ -1,162 +1,151 @@
 [
   {
     "style_name": "浮世繪風格 (Ukiyo-e)",
-    "prompt": "Traditional Japanese ukiyo-e woodblock print style, a couple in a portrait, bold black outlines, flat organic colors, subtle wood-grain texture, minimalist and clean background, elegant composition."
-  },
-  {
-    "style_name": "簡約彩繪玻璃風 (Minimalist Stained Glass)",
-    "prompt": "Stained glass window art style, two people portrait with vibrant color segments and thick black lead outlines, high contrast, surrounded by a minimalist background with large simple color blocks, uncluttered clean geometric background."
-  },
-  {
-    "style_name": "孔版印刷風 (Risograph)",
-    "prompt": "Risograph print style, two-tone color overlay, grainy analog texture, high contrast, vibrant soy-based ink aesthetic, minimalist couple portrait, clean solid color background, artistic dithered shading."
-  },
-  {
-    "style_name": "新藝術風格 (Art Nouveau)",
-    "prompt": "Art Nouveau style inspired by Alphonse Mucha, couple portrait with ornate floral borders, elegant flowing lines, flat muted colors, uncluttered elegant background, vintage illustration aesthetic."
-  },
-  {
-    "style_name": "剪紙層次風 (Paper Cutout)",
-    "prompt": "Layered paper cutout art, 3D depth, two people as paper silhouettes, vibrant solid colors, soft drop shadows, plain and simple background, minimalist and playful aesthetic."
-  },
-  {
-    "style_name": "清晰線條風格 (Ligne Claire)",
-    "prompt": "Ligne claire style inspired by Hergé, extremely clean black outlines, flat colors without shading, empty or extremely minimal background, minimalist comic aesthetic, two people portrait, sharp edges."
+    "prompt": "Traditional Japanese ukiyo-e woodblock print style, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, bold black outlines, flat organic colors, subtle wood-grain texture, minimalist and clean background, elegant composition."
   },
   {
     "style_name": "不透明水彩風 (Gouache)",
-    "prompt": "Gouache painting style, thick matte colors, visible paint strokes, simplified facial features, vibrant palette, simple soft background, handcrafted illustration aesthetic, couple portrait."
-  },
-  {
-    "style_name": "向量插畫風 (GTA/Vector)",
-    "prompt": "GTA style vector illustration, bold shadows and highlights, high contrast, vibrant saturated colors, thick outlines, plain scenic background, stylized realism, couple portrait."
-  },
-  {
-    "style_name": "野獸派藝術 (Fauvism)",
-    "prompt": "Fauvism style inspired by Henri Matisse, bold and non-naturalistic colors, expressive brushwork, high contrast, flat abstract background, simplified forms, artistic and vibrant couple portrait."
-  },
-  {
-    "style_name": "波普藝術 (Pop Art)",
-    "prompt": "Pop art style inspired by Andy Warhol, bold vibrant colors, screen print texture, high contrast, solid color background, iconic and stylish couple portrait, minimalist composition."
-  },
-  {
-    "style_name": "都市流行風 (City Pop)",
-    "prompt": "1980s Japanese City Pop anime style, couple portrait, vibrant retro pastel and neon colors, sharp clean outlines, minimal flat background, nostalgic aesthetic."
-  },
-  {
-    "style_name": "點描派風格 (Pointillism)",
-    "prompt": "Pointillism art style inspired by Georges Seurat, two people portrait, composed of thousands of distinct small colorful dots, high contrast, plain solid color background."
-  },
-  {
-    "style_name": "現代扁平插畫風 (Flat Design)",
-    "prompt": "Modern minimalist flat design illustration, couple portrait, clean geometric shapes, limited solid color palette, bold distinct lines, completely blank background."
-  },
-  {
-    "style_name": "膠版/橡皮章版畫風 (Linocut Print)",
-    "prompt": "Linocut block print style, thick chiseled black outlines, bold hand-printed ink textures, high contrast couple portrait, minimal single-color background."
-  },
-  {
-    "style_name": "Q版可愛動漫風 (Chibi Anime)",
-    "prompt": "Cute chibi anime illustration style, two people portrait, stylized features, thick clean outlines, bright flat colors, extremely simple minimalist background."
-  },
-  {
-    "style_name": "調色刀油畫風 (Palette Knife Painting)",
-    "prompt": "Heavy palette knife oil painting, thick impasto textures, bold colorful strokes, strong light and shadow contrast, couple portrait, abstract simplified background."
-  },
-  {
-    "style_name": "粉彩畫風格 (Pastel Drawing)",
-    "prompt": "Soft pastel drawing style, rich chalk texture, blended color blocks, high contrast edges, couple portrait, plain blurred background, artistic texture."
-  },
-  {
-    "style_name": "黑板粉筆畫風 (Chalkboard Art)",
-    "prompt": "Chalk art style, vibrant colored chalk drawings on a clean black chalkboard background, sharp line work, couple portrait, minimal chalkboard background."
-  },
-  {
-    "style_name": "低多邊形風 (Low Poly Art)",
-    "prompt": "Low poly geometric art style, couple portrait made of distinct sharp triangular facets, high contrast color gradient blocks, plain minimalist background."
-  },
-  {
-    "style_name": "裝飾藝術風格 (Art Deco)",
-    "prompt": "Art Deco illustration style, elegant geometric patterns, bold symmetrical lines, high contrast gold and deep color palette, couple portrait, simple stylized background."
-  },
-  {
-    "style_name": "立體派風格 (Cubism Style)",
-    "prompt": "Cubism art style inspired by Picasso, abstracted geometric shapes and interlocking planes, high contrast bold color blocks, couple portrait, simplified flat background."
-  },
-  {
-    "style_name": "絲網印刷海報風 (Screen Print)",
-    "prompt": "Vintage screen print poster aesthetic, layered ink alignment, high contrast color separation, bold textures, couple portrait, clean solid background."
-  },
-  {
-    "style_name": "雜誌社論插畫風 (Editorial Illustration)",
-    "prompt": "Modern magazine editorial illustration, stylish couple portrait, muted yet distinct color blocks, elegant clean linework, sophisticated minimalist background."
-  },
-  {
-    "style_name": "逆光剪影風 (Silhouette Art)",
-    "prompt": "High contrast silhouette art, black sharp outlines of a couple, set against a simple vibrant dual-tone sunset gradient background, minimalist composition."
-  },
-  {
-    "style_name": "刺繡貼布風 (Embroidered Patch)",
-    "prompt": "Embroidered patch aesthetic, thick stitched borderlines, dense colorful thread textures, couple portrait, plain fabric texture background, high definition."
-  },
-  {
-    "style_name": "賽博朋克向量風 (Cyberpunk Vector)",
-    "prompt": "Cyberpunk vector art, neon color blocks, sharp high-contrast shading, bold distinct lines, couple portrait, dark clean minimalist background."
-  },
-  {
-    "style_name": "淡彩線畫風 (Ink and Wash)",
-    "prompt": "Watercolor line and wash style, crisp black ink outlines filled with simple bright watercolor splashes, couple portrait, empty white paper background."
-  },
-  {
-    "style_name": "濕壁畫風格 (Fresco Mural)",
-    "prompt": "Ancient fresco mural style, textured plaster wall effect, muted yet opaque color pigments, simplified facial features, couple portrait, plain weathered background."
-  },
-  {
-    "style_name": "彩色刮畫風 (Scratchboard Art)",
-    "prompt": "Color scratchboard art style, vibrant colored lines etched out of a solid black background, high contrast, sharp line details, couple portrait, clean black background."
-  },
-  {
-    "style_name": "局部色彩黑色電影風 (Noir with Spot Color)",
-    "prompt": "Film noir comic style, high contrast black and white portrait of a couple, with a single bright spot color accent (like red or yellow), plain minimalist background."
-  },
-  {
-    "style_name": "復古橡皮管動畫風 (Rubber Hose Cartoon)",
-    "prompt": "1930s rubber hose cartoon style, bold ink lines, simple flat color accents, expressive stylized characters, couple portrait, plain off-white background."
-  },
-  {
-    "style_name": "民間部落風 (Folk Art)",
-    "prompt": "Traditional folk art style, symmetrical patterns, bold vibrant primary colors, simplified symbolic shapes, couple portrait, solid plain background."
-  },
-  {
-    "style_name": "幾何抽象肖像風 (Geometric Abstract)",
-    "prompt": "Abstract geometric portrait, face shapes simplified into circles and triangles, high contrast contrasting colors, couple portrait, flat minimalist background."
-  },
-  {
-    "style_name": "彩色藍曬風 (Tinted Cyanotype)",
-    "prompt": "Cyanotype photography style with a warm pastel tint overlay, high contrast monochrome blue base, sharp edges, couple portrait, clean studio background."
-  },
-  {
-    "style_name": "厚塗壓克力畫風 (Impasto Acrylic)",
-    "prompt": "Thick impasto acrylic painting style, vibrant non-blended color strokes, high physical texture, sharp highlights, couple portrait, simplified abstract background."
+    "prompt": "Gouache painting style, thick matte colors, visible paint strokes, simplified facial features, vibrant palette, simple soft background, handcrafted illustration aesthetic, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person."
   },
   {
     "style_name": "童話繪本風 (Storybook Illustration)",
-    "prompt": "Whimsical children's storybook illustration, cozy warm color palette, clean defined outlines, charming character designs, couple portrait, simple sky background."
+    "prompt": "Whimsical children's storybook illustration, cozy warm color palette, clean defined outlines, stylized but recognizable subject rendering, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simple sky background."
+  },
+  {
+    "style_name": "厚塗壓克力畫風 (Impasto Acrylic)",
+    "prompt": "Thick impasto acrylic painting style, vibrant non-blended color strokes, high physical texture, sharp highlights, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simplified abstract background."
+  },
+  {
+    "style_name": "幾何抽象肖像風 (Geometric Abstract)",
+    "prompt": "Abstract geometric portrait, face shapes simplified into circles and triangles, high contrast contrasting colors, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, flat minimalist background."
+  },
+  {
+    "style_name": "賽博朋克向量風 (Cyberpunk Vector)",
+    "prompt": "Cyberpunk vector art, neon color blocks, sharp high-contrast shading, bold distinct lines, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, dark clean minimalist background."
+  },
+  {
+    "style_name": "調色刀油畫風 (Palette Knife Painting)",
+    "prompt": "Heavy palette knife oil painting, thick impasto textures, bold colorful strokes, strong light and shadow contrast, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, abstract simplified background."
+  },
+  {
+    "style_name": "裝飾藝術風格 (Art Deco)",
+    "prompt": "Art Deco illustration style, elegant geometric patterns, bold symmetrical lines, high contrast gold and deep color palette, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simple stylized background."
+  },
+  {
+    "style_name": "濕壁畫風格 (Fresco Mural)",
+    "prompt": "Ancient fresco mural style, textured plaster wall effect, muted yet opaque color pigments, simplified facial features, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, plain weathered background."
+  },
+  {
+    "style_name": "黑板粉筆畫風 (Chalkboard Art)",
+    "prompt": "Chalk art style, vibrant colored chalk drawings on a clean black chalkboard background, sharp line work, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, minimal chalkboard background."
+  },
+  {
+    "style_name": "向量插畫風 (GTA/Vector)",
+    "prompt": "GTA style vector illustration, bold shadows and highlights, high contrast, vibrant saturated colors, thick outlines, plain scenic background, stylized realism, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person."
+  },
+  {
+    "style_name": "新藝術風格 (Art Nouveau)",
+    "prompt": "Art Nouveau style inspired by Alphonse Mucha, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, ornate floral borders, elegant flowing lines, flat muted colors, uncluttered elegant background, vintage illustration aesthetic."
+  },
+  {
+    "style_name": "低多邊形風 (Low Poly Art)",
+    "prompt": "Low poly geometric art style, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, rendered with distinct sharp triangular facets, high contrast color gradient blocks, plain minimalist background."
   },
   {
     "style_name": "明暗對比古典風 (Chiaroscuro)",
-    "prompt": "Chiaroscuro painting style, extreme contrast between deep shadow and intense light, dramatic lighting emphasizing faces, couple portrait, solid pitch-black background."
+    "prompt": "Chiaroscuro painting style, extreme contrast between deep shadow and intense light, dramatic lighting emphasizing faces, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, solid pitch-black background."
   },
   {
     "style_name": "復古明信片風 (Vintage Postcard)",
-    "prompt": "Early 20th-century retro postcard illustration, faded yet distinct lithographic colors, subtle paper texture, couple portrait, minimalist scenic background."
+    "prompt": "Early 20th-century retro postcard illustration, faded yet distinct lithographic colors, subtle paper texture, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, minimalist scenic background."
   },
   {
-    "style_name": "極簡向量線條風 (Minimalist Vector Line)",
-    "prompt": "Ultra-minimalist vector art, continuous black line art, filled with a few pastel color blocks, couple portrait, completely white blank background."
+    "style_name": "立體派風格 (Cubism Style)",
+    "prompt": "Cubism art style inspired by Picasso, abstracted geometric shapes and interlocking planes, high contrast bold color blocks, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simplified flat background."
   },
   {
-    "style_name": "微縮模型/立體透視風 (Diorama Style)",
-    "prompt": "Stylized diorama miniature style, clean clay-like models of two people, vibrant solid colors, tilt-shift focus, simple solid color studio background."
+    "style_name": "民間部落風 (Folk Art)",
+    "prompt": "Traditional folk art style, symmetrical patterns, bold vibrant primary colors, simplified symbolic shapes, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, solid plain background."
+  },
+  {
+    "style_name": "波普藝術 (Pop Art)",
+    "prompt": "Pop art style inspired by Andy Warhol, bold vibrant colors, screen print texture, high contrast, solid color background, iconic and stylish portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, minimalist composition."
+  },
+  {
+    "style_name": "都市流行風 (City Pop)",
+    "prompt": "1980s Japanese City Pop anime style, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, vibrant retro pastel and neon colors, sharp clean outlines, minimal flat background, nostalgic aesthetic."
+  },
+  {
+    "style_name": "Q版可愛動漫風 (Chibi Anime)",
+    "prompt": "Cute chibi anime illustration style, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, stylized features, thick clean outlines, bright flat colors, extremely simple minimalist background."
+  },
+  {
+    "style_name": "絲網印刷海報風 (Screen Print)",
+    "prompt": "Vintage screen print poster aesthetic, layered ink alignment, high contrast color separation, bold textures, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, clean solid background."
+  },
+  {
+    "style_name": "雜誌社論插畫風 (Editorial Illustration)",
+    "prompt": "Modern magazine editorial illustration, stylish portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, muted yet distinct color blocks, elegant clean linework, sophisticated minimalist background."
+  },
+  {
+    "style_name": "逆光剪影風 (Silhouette Art)",
+    "prompt": "High contrast silhouette art, black sharp outlines of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, set against a simple vibrant dual-tone sunset gradient background, minimalist composition."
+  },
+
+  {
+    "style_name": "彩色刮畫風 (Scratchboard Art)",
+    "prompt": "Color scratchboard art style, vibrant colored lines etched out of a solid black background, high contrast, sharp line details, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, clean black background."
+  },
+  {
+    "style_name": "局部色彩黑色電影風 (Noir with Spot Color)",
+    "prompt": "Film noir comic style, high contrast black and white portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, with a single bright spot color accent (like red or yellow), plain minimalist background."
+  },
+  {
+    "style_name": "復古橡皮管動畫風 (Rubber Hose Cartoon)",
+    "prompt": "1930s rubber hose cartoon style, bold ink lines, simple flat color accents, expressive stylized original subject rendering, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, plain off-white background."
+  },
+  {
+    "style_name": "復古時尚插畫風 (Retro Editorial Fashion Illustration)",
+    "prompt": "Transform this photo into a sophisticated retro editorial illustration with a mid-century modern aesthetic, flat gouache painting style, bold simplified color blocks, elegant vintage fashion illustration, muted warm tones translated into e-paper-friendly grayscale, minimalist composition, subtle paper grain texture, highly stylized but recognizable subject, clean empty background, museum poster style without text, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, strong contrast, preserve facial structure and identity, emphasize the face"
+  },
+  {
+    "style_name": "極簡高級時尚線稿風 (Minimalist Fashion Linework)",
+    "prompt": "Transform this photo into a refined minimalist fashion portrait illustration, clean expressive linework, simplified shapes, subtle grayscale shading, elegant editorial style, background kept plain and uncluttered, subject clearly separated from the background, preserve the person’s facial features and identity, keep the subject highly recognizable, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, high contrast, limited tonal range, clean edges, no text, no typography, no logo"
+  },
+  {
+    "style_name": "木刻插畫風 (Woodcut Illustration)",
+    "prompt": "Transform this photo into a refined woodcut-style portrait illustration, elegant engraved lines, strong black-and-white contrast, clean simplified background, prominent subject, preserve the person’s face and identity, recognizable facial proportions, artistic print aesthetic, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, readable composition, avoid excessive texture, no text, no typography, no logo"
+  },
+  {
+    "style_name": "鉛筆肖像素描風 (Pencil Portrait Drawing)",
+    "prompt": "Transform this photo into a high-quality pencil portrait drawing, delicate but clear facial details, soft controlled shading, clean white background, strong focus on the subject, preserve identity and recognizable features, elegant hand-drawn aesthetic, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, moderate contrast, simplified background, avoid messy sketch noise, no text, no watermark, no logo"
+  },
+  {
+    "style_name": "炭筆人像風 (Charcoal Portrait)",
+    "prompt": "Transform this photo into an expressive charcoal portrait illustration, bold facial shadows, rich grayscale contrast, soft textured strokes, minimalist background, strong emphasis on the person’s face, preserve facial structure and identity, recognizable subject, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, limited tonal range, clear subject separation, no text, no typography, no logo"
+  },
+  {
+    "style_name": "現代水墨人像風 (Modern Ink Wash Portrait)",
+    "prompt": "Transform this photo into a modern ink wash portrait, elegant brushwork, controlled grayscale ink tones, minimalist empty background, strong focus on the face, preserve the person’s identity and recognizable facial details, artistic and sophisticated composition, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, clean contrast, simplified tones, no text, no signature, no logo"
+  },
+  {
+    "style_name": "剪紙極簡人像風 (Paper-cut Minimal Portrait)",
+    "prompt": "Transform this photo into a sophisticated paper-cut style portrait, layered grayscale shapes, clean silhouette, minimal but recognizable facial detail, bold subject separation, very simple background, elegant graphic composition, preserve identity and facial proportions, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, high contrast, limited tonal steps, no text, no typography, no watermark, no logo"
+  },
+  {
+    "style_name": "向量海報風 (Vector Poster Portrait)",
+    "prompt": "Transform this photo into a clean vector-style portrait poster, smooth simplified shapes, crisp edges, limited grayscale palette, subtle facial detail, modern minimalist background, subject prominently centered, preserve the person’s identity and recognizable features, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, strong contrast, visually clean and readable, no text, no logo"
+  },
+  {
+    "style_name": "黑色電影插畫風 (Film Noir Portrait Illustration)",
+    "prompt": "Transform this photo into a dramatic film noir portrait illustration, strong light-and-shadow contrast, moody grayscale tones, clean uncluttered background, cinematic but simple composition, emphasize the face, preserve facial structure and identity, keep the subject clearly recognizable, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, limited tonal complexity, no text, no typography, no watermark, no logo"
+  },
+  {
+    "style_name": "單色 Editorial 雜誌風 (Monochrome Editorial Portrait)",
+    "prompt": "Transform this photo into a monochrome editorial portrait illustration, elegant magazine-style composition, simplified tonal blocks, subtle texture, clean minimal background, sophisticated high-contrast grayscale styling, preserve facial details and identity, keep the person highly recognizable, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, clear subject emphasis, no text, no logo"
+  },
+  {
+    "style_name": "半色調印刷風 (Halftone Print Portrait)",
+    "prompt": "Transform this photo into a refined halftone print portrait, controlled dot shading, strong black-and-white contrast, vintage print aesthetic, clean and simple background, subject prominently featured, preserve the person’s facial features and identity, recognizable at a glance, optimized for a medium-resolution e-paper display, horizontal composition, landscape orientation, limited tonal range, avoid excessive fine detail, no text, no watermark, no logo"
   }
 ]
