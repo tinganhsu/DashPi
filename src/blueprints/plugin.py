@@ -429,6 +429,30 @@ def ai_photo_stylist_download_cached():
         return jsonify({"error": "Download failed"}), 500
 
 
+@plugin_bp.route('/plugin/ai_photo_stylist/download_cached/<path:filename>')
+def ai_photo_stylist_download_cached_file(filename):
+    """Download one AI Photo Stylist cached image by filename."""
+    try:
+        file_name = sanitize_filename(os.path.basename(filename))
+        if not file_name or file_name != filename or not _is_allowed_image_file(file_name):
+            return jsonify({"error": "Invalid cached image filename"}), 400
+
+        cached_dir = _ai_photo_stylist_cached_dir()
+        file_path = os.path.join(cached_dir, file_name)
+        if not os.path.isfile(file_path):
+            return jsonify({"error": "Cached image not found"}), 404
+
+        return send_from_directory(
+            cached_dir,
+            file_name,
+            as_attachment=True,
+            download_name=file_name,
+        )
+    except Exception as e:
+        logger.exception(f"Error downloading AI Photo Stylist cached image: {str(e)}")
+        return jsonify({"error": "Download failed"}), 500
+
+
 @plugin_bp.route('/plugin/ai_photo_stylist/save_image_list', methods=['POST'])
 def ai_photo_stylist_save_image_list():
     """Persist the AI Photo Stylist upload list to plugin_last_settings."""

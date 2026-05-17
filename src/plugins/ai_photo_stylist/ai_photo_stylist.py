@@ -223,6 +223,10 @@ class AIPhotoStylist(BasePlugin):
         return image_path, False
 
     def _select_vibe(self, settings, image_path=None):
+        custom_vibe = self._custom_vibe_from_settings(settings)
+        if custom_vibe:
+            return custom_vibe
+
         vibes = self._load_vibes()
         if settings.get("randomizeVibe") == "true":
             if image_path:
@@ -239,8 +243,20 @@ class AIPhotoStylist(BasePlugin):
             return vibes[0]
         raise RuntimeError("Selected vibe was not found in vibe-pic.json.")
 
+    def _custom_vibe_from_settings(self, settings):
+        prompt = (settings.get("customVibePrompt") or "").strip()
+        if not prompt:
+            return None
+        digest = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+        return {
+            "id": f"custom_{digest}",
+            "name": "Custom Prompt",
+            "prompt": prompt,
+        }
+
     def _prioritize_random_source_candidates(self, candidates, settings):
-        vibes = self._load_vibes()
+        custom_vibe = self._custom_vibe_from_settings(settings)
+        vibes = [custom_vibe] if custom_vibe else self._load_vibes()
         vibe_ids = {vibe["id"] for vibe in vibes}
         state = self._load_usage_state()
         history = state["photos"]

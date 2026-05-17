@@ -116,6 +116,28 @@ def test_generate_image_caches_success(plugin, mock_device_config):
     assert len(cached) == 1
 
 
+def test_custom_vibe_prompt_overrides_selected_vibe(plugin, mock_device_config):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+
+    img = plugin.generate_image({
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "customVibePrompt": "bold woodblock portrait with flat ink shapes",
+        "fitMode": "fit",
+    }, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    args = plugin._generate_with_gemini.call_args.args
+    assert args[3].startswith("bold woodblock portrait with flat ink shapes")
+    state = _read_usage_state(plugin)["photos"]
+    used_vibes = state[plugin._history_key_for_image(img_path)]
+    assert len(used_vibes) == 1
+    assert used_vibes[0].startswith("custom_")
+
+
 def test_generate_image_uses_openai_provider(plugin, mock_device_config):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -431,6 +453,39 @@ def test_download_cached_images_zip(client, monkeypatch, tmp_path):
     assert resp.mimetype == "application/zip"
     with zipfile.ZipFile(BytesIO(resp.data)) as zf:
         assert sorted(zf.namelist()) == ["first.png", "second.jpg"]
+
+
+def test_download_single_cached_image(client, monkeypatch, tmp_path):
+    cached_dir = tmp_path / "cached"
+    cached_dir.mkdir()
+    _create_test_image(cached_dir / "first.png")
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+
+    resp = client.get("/plugin/ai_photo_stylist/download_cached/first.png")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+    assert "attachment" in resp.headers["Content-Disposition"]
+    assert "first.png" in resp.headers["Content-Disposition"]
+
+
+def test_download_single_cached_image_rejects_path_traversal(client, monkeypatch, tmp_path):
+    cached_dir = tmp_path / "cached"
+    cached_dir.mkdir()
+    _create_test_image(cached_dir / "first.png")
+
+    monkeypatch.setattr(
+        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        lambda: str(cached_dir),
+    )
+
+    resp = client.get("/plugin/ai_photo_stylist/download_cached/../first.png")
+
+    assert resp.status_code == 400
 
 
 def test_delete_cached_image_does_not_update_upload_settings(client, monkeypatch, mock_device_config, tmp_path):

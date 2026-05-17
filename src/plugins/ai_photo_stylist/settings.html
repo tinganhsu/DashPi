@@ -76,6 +76,12 @@
 </div>
 
 <div class="form-group">
+    <label for="customVibePrompt" class="form-label">Custom Vibe Prompt</label>
+    <textarea id="customVibePrompt" name="customVibePrompt" class="form-input" rows="4"
+              placeholder="Paste a full style prompt here to override the selected vibe"></textarea>
+</div>
+
+<div class="form-group">
     <label for="randomizeVibe" class="form-label">Random Vibe:</label>
     <div class="toggle-container">
         <input type="hidden" name="randomizeVibe" value="false">
@@ -317,8 +323,13 @@
         fileElement.id = `cached-${domId}`;
         fileElement.classList.add("file-name");
 
-        const nameEl = document.createElement("span");
+        const nameEl = document.createElement("a");
         nameEl.id = "fileNameText";
+        nameEl.href = `/plugin/ai_photo_stylist/download_cached/${encodeURIComponent(fileName)}`;
+        nameEl.download = fileName;
+        nameEl.title = "Download cached image";
+        nameEl.style.color = "inherit";
+        nameEl.style.textDecoration = "none";
         nameEl.textContent = fileName;
         fileElement.appendChild(nameEl);
 
@@ -421,6 +432,7 @@
 
         if (loadPluginSettings) {
             document.getElementById('customPrompt').value = pluginSettings.customPrompt || '';
+            document.getElementById('customVibePrompt').value = pluginSettings.customVibePrompt || '';
             document.getElementById('provider').value = pluginSettings.provider || 'gemini';
             document.getElementById('randomizePhoto').checked = pluginSettings.randomizePhoto === 'true';
             document.getElementById('includeCachedInRandom').checked = pluginSettings.includeCachedInRandom === 'true';
