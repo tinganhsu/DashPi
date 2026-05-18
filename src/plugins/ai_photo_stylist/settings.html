@@ -39,6 +39,21 @@
         overflow: hidden;
     }
 
+    #fileNames .ai-stylist-thumb-item {
+        cursor: pointer;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    #fileNames .ai-stylist-thumb-item:hover {
+        border-color: var(--accent-color, #2196f3);
+    }
+
+    #fileNames .ai-stylist-thumb-item.selected {
+        border-color: var(--accent-color, #2196f3);
+        box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.28);
+        transform: translateY(-1px);
+    }
+
     .ai-stylist-thumb-link,
     .ai-stylist-thumb-frame {
         display: block;
@@ -87,6 +102,27 @@
     .ai-stylist-thumb-item .remove-btn {
         margin-left: 0;
         line-height: 1;
+    }
+
+    .ai-stylist-thumb-selected-mark {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent-color, #2196f3);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    #fileNames .ai-stylist-thumb-item.selected .ai-stylist-thumb-selected-mark {
+        display: flex;
     }
 </style>
 
@@ -358,7 +394,20 @@
         const fileElement = document.createElement("div");
         fileElement.id = `existing-${domId}`;
         fileElement.classList.add("file-name", "ai-stylist-thumb-item");
+        fileElement.dataset.sourcePath = filePath;
+        fileElement.tabIndex = 0;
+        fileElement.role = "button";
+        fileElement.title = `Select ${fileName}`;
         if (missing) fileElement.style.opacity = '0.6';
+        if (!missing) {
+            fileElement.addEventListener("click", () => selectSourceImage(filePath));
+            fileElement.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    selectSourceImage(filePath);
+                }
+            });
+        }
 
         const thumbFrame = document.createElement("div");
         thumbFrame.className = "ai-stylist-thumb-frame";
@@ -375,6 +424,11 @@
             thumbFrame.textContent = "No preview";
         }
         fileElement.appendChild(thumbFrame);
+
+        const selectedMark = document.createElement("span");
+        selectedMark.className = "ai-stylist-thumb-selected-mark";
+        selectedMark.textContent = "✓";
+        fileElement.appendChild(selectedMark);
 
         const metaEl = document.createElement("div");
         metaEl.className = "ai-stylist-thumb-meta";
@@ -398,7 +452,10 @@
         removeButton.type = "button";
         removeButton.className = "remove-btn";
         removeButton.textContent = "X";
-        removeButton.addEventListener("click", () => removeExistingFile(fileName));
+        removeButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            removeExistingFile(fileName);
+        });
         metaEl.appendChild(removeButton);
         fileElement.appendChild(metaEl);
         fileNamesDisplay.appendChild(fileElement);
@@ -411,7 +468,7 @@
         hiddenFileInputs.appendChild(hiddenInput);
 
         updateFileListHeader();
-        rebuildSourceDropdown(filePath);
+        rebuildSourceDropdown(undefined, { keepCurrentSelection: true });
     }
 
     function removeExistingFile(fileName) {
@@ -431,7 +488,7 @@
         }
 
         updateFileListHeader();
-        rebuildSourceDropdown();
+        rebuildSourceDropdown(undefined, { keepCurrentSelection: true });
         autoSaveFileList();
     }
 
@@ -544,22 +601,43 @@
         }
     }
 
-    function rebuildSourceDropdown(preferredPath) {
+    function selectSourceImage(filePath, options = {}) {
+        const { disableRandom = true } = options;
         const dropdown = document.getElementById('sourceImagePath');
-        const previousValue = preferredPath || dropdown.value;
+        const randomizePhoto = document.getElementById('randomizePhoto');
+
+        dropdown.value = filePath || '';
+        document.querySelectorAll('#fileNames .ai-stylist-thumb-item').forEach(item => {
+            item.classList.toggle('selected', Boolean(filePath) && item.dataset.sourcePath === filePath);
+        });
+        if (filePath && disableRandom && randomizePhoto) {
+            randomizePhoto.checked = false;
+        }
+    }
+
+    function rebuildSourceDropdown(preferredPath, options = {}) {
+        const dropdown = document.getElementById('sourceImagePath');
+        const previousValue = preferredPath !== undefined ? preferredPath : (options.keepCurrentSelection ? dropdown.value : '');
         const paths = getCurrentFilePaths();
         dropdown.innerHTML = '';
+        dropdown.add(new Option('', ''));
 
         if (!paths.length) {
-            dropdown.add(new Option('Upload a photo first', ''));
+            selectSourceImage('', { disableRandom: false });
             return;
         }
 
         paths.forEach(path => dropdown.add(new Option(fileNameFromPath(path), path)));
         if (paths.includes(previousValue)) {
-            dropdown.value = previousValue;
+            selectSourceImage(previousValue, { disableRandom: false });
+        } else {
+            selectSourceImage('', { disableRandom: false });
         }
     }
+
+    document.getElementById('sourceImagePath').addEventListener('change', (event) => {
+        selectSourceImage(event.target.value);
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
         cachedImages.forEach(item => addCachedFileToList(item.name, item.path, item.thumbnail_url || ''));
