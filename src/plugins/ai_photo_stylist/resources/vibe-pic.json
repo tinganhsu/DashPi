@@ -88,11 +88,6 @@
     "prompt": "Modern magazine editorial illustration, stylish portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, muted yet distinct color blocks, elegant clean linework, sophisticated minimalist background."
   },
   {
-    "style_name": "逆光剪影風 (Silhouette Art)",
-    "prompt": "High contrast silhouette art, black sharp outlines of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, set against a simple vibrant dual-tone sunset gradient background, minimalist composition."
-  },
-
-  {
     "style_name": "彩色刮畫風 (Scratchboard Art)",
     "prompt": "Color scratchboard art style, vibrant colored lines etched out of a solid black background, high contrast, sharp line details, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, clean black background."
   },
