@@ -8,6 +8,7 @@ All notable changes to DashPi are documented here.
 - **Plugin blueprints**: Added generic plugin-owned Flask blueprint registration via `register_plugin_blueprints(app)`, allowing plugins to expose their own API routes without hardcoding them in core blueprints.
 - **AI Photo Stylist core patch fallback**: Added idempotent DashPi/InkyPi core patch helpers for older installs that do not yet support plugin blueprints.
 - **AI Photo Stylist default prompts**: Added `resources/default-prompt.json` so the shared image-generation prompt wrapper can be edited without changing Python code.
+- **AI Photo Stylist vibes**: Added an Urban Street-Art Illustration vibe with graffiti-inspired digital painting, retro comic poster styling, and subtle street-tag backgrounds.
 
 ### Changed
 - **AI Photo Stylist plugin APIs**: Moved AI Photo Stylist upload, delete, check, save-list, and cached-image download endpoints out of the main plugin blueprint and into the AI Photo Stylist plugin package.
