@@ -155,6 +155,19 @@ def test_generate_image_caches_success(plugin, mock_device_config):
     assert "vertical composition, portrait orientation" not in prompt
 
 
+def test_build_prompt_uses_external_default_prompt(plugin):
+    prompt = plugin._build_prompt(
+        {"prompt": "vivid folk art portrait"},
+        "",
+        orientation="vertical",
+    )
+
+    assert prompt.startswith("vivid folk art portrait")
+    assert "vertical composition, portrait orientation" in prompt
+    assert "fully follow the selected style prompt" in prompt
+    assert "limited tonal range" not in prompt
+
+
 def test_custom_vibe_prompt_overrides_selected_vibe(plugin, mock_device_config):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -485,7 +498,7 @@ def test_download_cached_images_zip(client, monkeypatch, tmp_path):
     (cached_dir / "notes.txt").write_text("not an image\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
 
@@ -503,7 +516,7 @@ def test_download_single_cached_image(client, monkeypatch, tmp_path):
     _create_test_image(cached_dir / "first.png")
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
 
@@ -521,7 +534,7 @@ def test_download_single_cached_image_rejects_path_traversal(client, monkeypatch
     _create_test_image(cached_dir / "first.png")
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
 
@@ -539,11 +552,11 @@ def test_delete_cached_image_does_not_update_upload_settings(client, monkeypatch
     _create_test_image(cached_file)
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        "plugins.ai_photo_stylist.api._upload_dir",
         lambda: str(upload_dir),
     )
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
 
@@ -566,15 +579,15 @@ def test_upload_ai_photo_stylist_image_saves_thumbnail(client, monkeypatch, tmp_
     thumb_dir.mkdir()
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        "plugins.ai_photo_stylist.api._upload_dir",
         lambda: str(upload_dir),
     )
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_thumb_dir",
+        "plugins.ai_photo_stylist.api._thumb_dir",
         lambda: str(thumb_dir),
     )
 
@@ -616,15 +629,15 @@ def test_delete_upload_image_removes_thumbnail(client, monkeypatch, mock_device_
     mock_device_config.get_config.return_value = {"imageFiles[]": [str(upload_file)]}
 
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_upload_dir",
+        "plugins.ai_photo_stylist.api._upload_dir",
         lambda: str(upload_dir),
     )
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_cached_dir",
+        "plugins.ai_photo_stylist.api._cached_dir",
         lambda: str(cached_dir),
     )
     monkeypatch.setattr(
-        "blueprints.plugin._ai_photo_stylist_thumb_dir",
+        "plugins.ai_photo_stylist.api._thumb_dir",
         lambda: str(thumb_dir),
     )
 

@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 class PluginManager(BasePlugin):
     """UI-only plugin for managing third-party plugins from GitHub."""
 
+    @classmethod
+    def get_blueprint(cls):
+        """Return the plugin manager API blueprint."""
+        from . import api
+
+        return api.plugin_manage_bp
+
     @staticmethod
     def _get_plugin_last_commit_date(plugin_id):
         """Return the local git commit timestamp for an installed plugin."""

@@ -6,6 +6,17 @@
 </div>
 {% endif %}
 
+{% if core_needs_patch %}
+<div class="form-group">
+    <div style="color: #d9822b; font-size: 0.9em; line-height: 1.4;">
+        Core plugin API support is being installed. Wait for the service to restart, then reload this page.
+        {% if core_patch_missing %}
+        Missing: {{ core_patch_missing | join(', ') }}
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <div class="form-group">
     <label for="imageUpload" class="form-input file-upload-label" id="uploadLabel">Choose Photo</label>
     <input type="file" id="imageUpload" accept="image/*" multiple

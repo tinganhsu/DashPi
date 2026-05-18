@@ -50,3 +50,28 @@ def get_plugin_instance(plugin_config):
         return plugin_class
     else:
         raise ValueError(f"Plugin '{plugin_id}' is not registered.")
+
+
+def register_plugin_blueprints(app):
+    """Register Flask blueprints exposed by loaded plugins.
+
+    Plugins can opt in by implementing ``get_blueprint()`` on their plugin
+    class/instance and returning a Flask Blueprint. Registration must happen
+    before the app starts serving requests.
+    """
+    for plugin_id, plugin_instance in PLUGIN_CLASSES.items():
+        try:
+            get_blueprint = getattr(plugin_instance, "get_blueprint", None)
+            if not get_blueprint:
+                continue
+
+            blueprint = get_blueprint()
+            if blueprint:
+                app.register_blueprint(blueprint)
+                logger.info("Registered blueprint for plugin '%s'", plugin_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to register blueprint for plugin '%s': %s",
+                plugin_id,
+                exc,
+            )

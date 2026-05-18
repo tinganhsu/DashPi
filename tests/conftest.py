@@ -115,12 +115,14 @@ def flask_app(mock_device_config, tmp_path):
     from blueprints.plugin import plugin_bp
     from blueprints.apikeys import apikeys_bp
     from blueprints.loops import loops_bp
+    from plugins.ai_photo_stylist.api import ai_photo_stylist_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(plugin_bp)
     app.register_blueprint(apikeys_bp)
     app.register_blueprint(loops_bp)
+    app.register_blueprint(ai_photo_stylist_bp)
 
     return app
 

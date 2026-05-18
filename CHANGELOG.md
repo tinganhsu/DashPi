@@ -4,6 +4,17 @@ All notable changes to DashPi are documented here.
 
 ## [2.2.3] — 2026-05-18
 
+### Added
+- **Plugin blueprints**: Added generic plugin-owned Flask blueprint registration via `register_plugin_blueprints(app)`, allowing plugins to expose their own API routes without hardcoding them in core blueprints.
+- **AI Photo Stylist core patch fallback**: Added idempotent DashPi/InkyPi core patch helpers for older installs that do not yet support plugin blueprints.
+- **AI Photo Stylist default prompts**: Added `resources/default-prompt.json` so the shared image-generation prompt wrapper can be edited without changing Python code.
+
+### Changed
+- **AI Photo Stylist plugin APIs**: Moved AI Photo Stylist upload, delete, check, save-list, and cached-image download endpoints out of the main plugin blueprint and into the AI Photo Stylist plugin package.
+- **Plugin Manager API registration**: Plugin Manager now exposes its API through the same plugin blueprint hook instead of being registered directly by `dashpi.py`.
+- **AI Photo Stylist prompt behavior**: Relaxed the shared build prompt so generated portraits preserve recognizable identity while allowing each selected vibe to drive color, texture, linework, composition, lighting, background treatment, and mood more strongly.
+- **AI Photo Stylist color vibes**: Removed accidental grayscale constraints from several color-capable styles, including Retro Editorial Fashion Illustration, Minimalist Fashion Linework, Paper-cut Minimal Portrait, and Vector Poster Portrait.
+
 ### Fixed
 - **AI Photo Stylist thumbnails**: Prevented thumbnail previews from inheriting the dark-mode image inversion filter, so uploaded photos and cached artwork no longer appear as negative images.
 

@@ -14,6 +14,7 @@ import math
 import os
 import random
 import re
+import subprocess
 import time
 
 logger = logging.getLogger(__name__)
@@ -30,10 +31,42 @@ OPENAI_IMAGE_QUALITIES = {"auto", "low", "medium", "high"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heif", ".heic", ".avif"}
 USAGE_STATE_VERSION = 1
 LEGACY_USAGE_HISTORY_KEY = "styleUsageHistory"
+DEFAULT_PROMPT_TEMPLATE = {
+    "prompt_parts": [
+        "{vibe_prompt}",
+        (
+            "Use the input photo as the source image. Preserve the person's facial structure, identity, "
+            "expression, hairstyle, and recognizable features. The subject should remain clearly identifiable, "
+            "but the artwork should fully follow the selected style prompt."
+        ),
+        (
+            "Let the selected style strongly influence color, texture, linework, composition, lighting, "
+            "background treatment, and overall artistic mood. Do not force a generic clean portrait look unless "
+            "the selected style asks for it."
+        ),
+        (
+            "Adapt the composition to {composition} while keeping the main subject prominent and recognizable. "
+            "Fill the requested aspect ratio naturally and extend or regenerate the background in a style-consistent way. "
+            "Make the image readable on a medium-resolution e-paper display, but preserve the distinctive visual language "
+            "of the selected art style."
+        ),
+        (
+            "Avoid text, typography, letters, captions, watermark, logo, signature, distorted facial features, "
+            "extra limbs, extra fingers, blurry face, and unreadable facial details."
+        ),
+    ]
+}
 
 
 class AIPhotoStylist(BasePlugin):
     """Restyles plugin-owned uploaded photos and caches generated outputs."""
+
+    @classmethod
+    def get_blueprint(cls):
+        """Return the AI Photo Stylist API blueprint."""
+        from . import api
+
+        return api.ai_photo_stylist_bp
 
     def generate_settings_template(self):
         template_params = super().generate_settings_template()
@@ -45,6 +78,7 @@ class AIPhotoStylist(BasePlugin):
         template_params["available_images"] = self._get_available_images()
         template_params["cached_images"] = self._get_cached_images()
         template_params["cached_image_count"] = len(template_params["cached_images"])
+        template_params.update(self._get_core_patch_template_params())
 
         try:
             template_params["vibes"] = self._load_vibes()
@@ -54,6 +88,33 @@ class AIPhotoStylist(BasePlugin):
             template_params["vibes_error"] = str(exc)
 
         return template_params
+
+    def _get_core_patch_template_params(self):
+        params = {
+            "core_needs_patch": False,
+            "core_patch_missing": [],
+            "core_auto_patch_started": False,
+        }
+        try:
+            from .patch_core import check_core_patched
+
+            is_patched, missing = check_core_patched()
+            params["core_needs_patch"] = not is_patched
+            params["core_patch_missing"] = missing
+            if is_patched:
+                return params
+
+            patch_script = Path(self.get_plugin_dir("patch-core.sh"))
+            if patch_script.is_file():
+                subprocess.Popen(
+                    ["bash", str(patch_script)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                params["core_auto_patch_started"] = True
+        except Exception as exc:
+            logger.warning("Could not check or start AI Photo Stylist core patch: %s", exc)
+        return params
 
     def generate_image(self, settings, device_config):
         logger.info("=== AI Photo Stylist Plugin: Starting image generation ===")
@@ -424,29 +485,39 @@ class AIPhotoStylist(BasePlugin):
             composition = "horizontal composition, landscape orientation"
 
         prompt_parts = [
-            vibe["prompt"],
-            (
-                "Use the input photo as the source image. Preserve the person's facial features and identity, "
-                "keep the subject stylized but recognizable, emphasize the face, and preserve the core pose and composition. "
-            ),
-            (
-                f"Optimize for a medium-resolution e-paper display with {composition}, "
-                "a simple clean background, strong subject separation, high contrast, limited tonal range, clean edges, "
-                "minimal visual clutter, and readability at a glance."
-            ),
-            "Avoid tiny details that disappear on e-paper.",
-            "Recompose the image to fully fill the requested aspect ratio edge to edge. Extend or regenerate the background naturally.",
-            (
-                "Negative prompt: text, typography, letters, captions, watermark, logo, signature, cluttered background, "
-                "busy patterns, low contrast, blurry face, distorted facial features, extra limbs, extra fingers, "
-                "photorealistic noise, overly detailed background, tiny unreadable details, empty side margins, "
-                "pillarboxing, letterboxing, white space, borders, framed areas."
-            ),
+            part.replace("{vibe_prompt}", vibe["prompt"]).replace("{composition}", composition)
+            for part in self._load_default_prompt_parts()
         ]
         custom_prompt = (custom_prompt or "").strip()
         if custom_prompt:
             prompt_parts.append(custom_prompt)
         return " ".join(prompt_parts)
+
+    def _load_default_prompt_parts(self):
+        prompt_path = Path(self.get_plugin_dir(os.path.join("resources", "default-prompt.json")))
+        if not prompt_path.is_file():
+            return DEFAULT_PROMPT_TEMPLATE["prompt_parts"]
+
+        try:
+            with prompt_path.open(encoding="utf-8") as f:
+                prompt_template = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Invalid default-prompt.json: {exc}") from exc
+
+        if not isinstance(prompt_template, dict):
+            raise RuntimeError("Invalid default-prompt.json: root value must be an object.")
+
+        prompt_parts = prompt_template.get("prompt_parts")
+        if not isinstance(prompt_parts, list):
+            raise RuntimeError("Invalid default-prompt.json: prompt_parts must be a list.")
+
+        clean_parts = [part.strip() for part in prompt_parts if isinstance(part, str) and part.strip()]
+        if not clean_parts:
+            raise RuntimeError("Invalid default-prompt.json: prompt_parts must include at least one prompt string.")
+        if not any("{vibe_prompt}" in part for part in clean_parts):
+            raise RuntimeError("Invalid default-prompt.json: prompt_parts must include {vibe_prompt}.")
+
+        return clean_parts
 
     def _generate_with_gemini(self, api_key, model, image_path, prompt, dimensions):
         try:
