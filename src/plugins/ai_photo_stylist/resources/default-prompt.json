@@ -1,0 +1,9 @@
+{
+  "prompt_parts": [
+    "{vibe_prompt}",
+    "Use the input photo as the source image. Preserve the person's facial structure, identity, expression, hairstyle, and recognizable features. The subject should remain clearly identifiable, but the artwork should fully follow the selected style prompt.",
+    "Let the selected style strongly influence color, texture, linework, composition, lighting, background treatment, and overall artistic mood. Do not force a generic clean portrait look unless the selected style asks for it.",
+    "Adapt the composition to {composition} while keeping the main subject prominent and recognizable. Fill the requested aspect ratio naturally and extend or regenerate the background in a style-consistent way. Make the image readable on a medium-resolution e-paper display, but preserve the distinctive visual language of the selected art style.",
+    "Avoid text, typography, letters, captions, watermark, logo, signature, distorted facial features, extra limbs, extra fingers, blurry face, and unreadable facial details."
+  ]
+}

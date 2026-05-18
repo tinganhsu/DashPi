@@ -106,11 +106,11 @@
   },
   {
     "style_name": "復古時尚插畫風 (Retro Editorial Fashion Illustration)",
-    "prompt": "Transform this photo into a sophisticated retro editorial illustration with a mid-century modern aesthetic, flat gouache painting style, bold simplified color blocks, elegant vintage fashion illustration, muted warm tones translated into e-paper-friendly grayscale, minimalist composition, subtle paper grain texture, highly stylized but recognizable subject, clean empty background, museum poster style without text, optimized for a medium-resolution e-paper display, strong contrast, preserve facial structure and identity, emphasize the face"
+    "prompt": "Transform this photo into a sophisticated retro editorial fashion illustration with a mid-century modern aesthetic, flat gouache painting style, bold simplified color blocks, elegant vintage fashion illustration, muted warm color palette with cream, coral, ochre, teal, and soft black accents, minimalist composition, subtle paper grain texture, highly stylized but recognizable subject, clean empty background, museum poster style without text, optimized for a medium-resolution e-paper display, strong contrast, preserve facial structure and identity, emphasize the face"
   },
   {
     "style_name": "極簡高級時尚線稿風 (Minimalist Fashion Linework)",
-    "prompt": "Transform this photo into a refined minimalist fashion portrait illustration, clean expressive linework, simplified shapes, subtle grayscale shading, elegant editorial style, background kept plain and uncluttered, subject clearly separated from the background, preserve the person’s facial features and identity, keep the subject highly recognizable, optimized for a medium-resolution e-paper display, high contrast, limited tonal range, clean edges, no text, no typography, no logo"
+    "prompt": "Transform this photo into a refined minimalist fashion portrait illustration, clean expressive linework, simplified shapes, subtle warm color washes, elegant editorial style, restrained fashion palette with blush, taupe, cream, muted red, and soft charcoal accents, background kept plain and uncluttered, subject clearly separated from the background, preserve the person’s facial features and identity, keep the subject highly recognizable, optimized for a medium-resolution e-paper display, high contrast, clean edges, no text, no typography, no logo"
   },
   {
     "style_name": "木刻插畫風 (Woodcut Illustration)",
@@ -130,11 +130,11 @@
   },
   {
     "style_name": "剪紙極簡人像風 (Paper-cut Minimal Portrait)",
-    "prompt": "Transform this photo into a sophisticated paper-cut style portrait, layered grayscale shapes, clean silhouette, minimal but recognizable facial detail, bold subject separation, very simple background, elegant graphic composition, preserve identity and facial proportions, optimized for a medium-resolution e-paper display, high contrast, limited tonal steps, no text, no typography, no watermark, no logo"
+    "prompt": "Transform this photo into a sophisticated paper-cut style portrait, layered colored paper shapes, clean silhouette, minimal but recognizable facial detail, bold subject separation, very simple background, elegant graphic composition, limited but distinct paper palette with cream, terracotta, sage, navy, and warm beige, preserve identity and facial proportions, optimized for a medium-resolution e-paper display, high contrast, clean layered edges, no text, no typography, no watermark, no logo"
   },
   {
     "style_name": "向量海報風 (Vector Poster Portrait)",
-    "prompt": "Transform this photo into a clean vector-style portrait poster, smooth simplified shapes, crisp edges, limited grayscale palette, subtle facial detail, modern minimalist background, subject prominently centered, preserve the person’s identity and recognizable features, optimized for a medium-resolution e-paper display, strong contrast, visually clean and readable, no text, no logo"
+    "prompt": "Transform this photo into a clean vector-style portrait poster, smooth simplified shapes, crisp edges, limited but vivid poster color palette, subtle facial detail, modern minimalist background, subject prominently centered, bold color blocks with cream, red, blue, yellow, teal, and soft black accents, preserve the person’s identity and recognizable features, optimized for a medium-resolution e-paper display, strong contrast, visually clean and readable, no text, no logo"
   },
   {
     "style_name": "黑色電影插畫風 (Film Noir Portrait Illustration)",

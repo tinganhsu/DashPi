@@ -67,6 +67,29 @@ src/plugins/ai_photo_stylist/resources/vibe-pic.json
 
 An optional `id` field may be provided. If omitted, DashPi derives one from the style name.
 
+## `default-prompt.json` Format
+
+The shared prompt wrapper is stored separately so the default generation behavior can be tuned without changing Python code:
+
+```text
+src/plugins/ai_photo_stylist/resources/default-prompt.json
+```
+
+`default-prompt.json` should be a JSON object with a `prompt_parts` array. The plugin joins these strings together to build the final prompt. Include `{vibe_prompt}` where the selected style prompt should appear. You can also use `{composition}` to insert either the vertical or horizontal display orientation.
+
+```json
+{
+  "prompt_parts": [
+    "{vibe_prompt}",
+    "Preserve the person's identity and recognizable facial features.",
+    "Let the selected style strongly influence color, texture, linework, composition, and mood.",
+    "Adapt the composition to {composition}."
+  ]
+}
+```
+
+The optional **Extra Prompt** setting is still appended after these default prompt parts.
+
 ## Settings
 
 - **Source Photo**: choose one uploaded photo.
