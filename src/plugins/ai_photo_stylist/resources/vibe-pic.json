@@ -64,10 +64,6 @@
     "prompt": "Cubism art style inspired by Picasso, abstracted geometric shapes and interlocking planes, high contrast bold color blocks, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simplified flat background."
   },
   {
-    "style_name": "民間部落風 (Folk Art)",
-    "prompt": "Traditional folk art style, symmetrical patterns, bold vibrant primary colors, simplified symbolic shapes, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, solid plain background."
-  },
-  {
     "style_name": "波普藝術 (Pop Art)",
     "prompt": "Pop art style inspired by Andy Warhol, bold vibrant colors, screen print texture, high contrast, solid color background, iconic and stylish portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, minimalist composition."
   },

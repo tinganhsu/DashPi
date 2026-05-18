@@ -1,9 +1,11 @@
 {
   "prompt_parts": [
     "{vibe_prompt}",
-    "Use the input photo as the source image. Preserve the person's facial structure, identity, expression, hairstyle, and recognizable features. The subject should remain clearly identifiable, but the artwork should fully follow the selected style prompt.",
-    "Let the selected style strongly influence color, texture, linework, composition, lighting, background treatment, and overall artistic mood. Do not force a generic clean portrait look unless the selected style asks for it.",
-    "Adapt the composition to {composition} while keeping the main subject prominent and recognizable. Fill the requested aspect ratio naturally and extend or regenerate the background in a style-consistent way. Make the image readable on a medium-resolution e-paper display, but preserve the distinctive visual language of the selected art style.",
-    "Avoid text, typography, letters, captions, watermark, logo, signature, distorted facial features, extra limbs, extra fingers, blurry face, and unreadable facial details."
+    "Use the input photo only as source material for the subject, pose, expression, hairstyle, clothing, and overall likeness. Recreate the person as a new hand-made artwork in the selected style, preserving the subject's spirit and recognizable impression rather than exact photographic identity.",
+    "Strongly stylize the face and body into the selected art language. Simplify, exaggerate, redraw, or abstract facial features when the style calls for it; do not keep the original photo's exact skin texture, lighting, camera look, or pixel-level facial details.",
+    "The result must look like a complete illustration, painting, print, drawing, poster, or other non-photographic artwork, not a filtered photo, retouched photo, colorized photo, photorealistic rendering, 3D render, or realistic portrait with a style overlay.",
+    "Let the selected style dominate color, texture, linework, composition, lighting, background treatment, and overall artistic mood. Preserve the exact number of people and their general relationships, but allow artistic reinterpretation of faces as long as the subjects remain evocative of the source.",
+    "Adapt the composition to {composition} while keeping the main subject prominent. Fill the requested aspect ratio naturally and regenerate the background in a style-consistent way. Make the image readable on a medium-resolution e-paper display with bold shapes, clear contrast, and the distinctive visual language of the selected art style.",
+    "Avoid text, typography, letters, captions, watermark, logo, signature, photorealism, photographic skin detail, distorted facial features, extra limbs, extra fingers, blurry face, and unreadable facial details."
   ]
 }

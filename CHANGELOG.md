@@ -2,6 +2,13 @@
 
 All notable changes to DashPi are documented here.
 
+## [2.2.4] — 2026-05-18
+
+### Changed
+- **AI Photo Stylist prompt behavior**: Strengthened the default prompt so generated images are recreated as non-photographic artwork instead of filtered or retouched photos, while still preserving the source subject, pose, expression, clothing, and overall likeness.
+- **AI Photo Stylist vibe selection**: Added a "No specific vibe" option, defaulted new/empty settings to random vibe selection, and automatically clears Random Vibe when a specific vibe is chosen.
+- **AI Photo Stylist vibes**: Removed the Folk Art built-in vibe from the default style list.
+
 ## [2.2.3] — 2026-05-18
 
 ### Added

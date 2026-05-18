@@ -164,7 +164,8 @@ def test_build_prompt_uses_external_default_prompt(plugin):
 
     assert prompt.startswith("vivid folk art portrait")
     assert "vertical composition, portrait orientation" in prompt
-    assert "fully follow the selected style prompt" in prompt
+    assert "rather than exact photographic identity" in prompt
+    assert "not a filtered photo" in prompt
     assert "limited tonal range" not in prompt
 
 

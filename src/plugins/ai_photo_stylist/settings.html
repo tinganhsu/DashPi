@@ -183,6 +183,7 @@
 <div class="form-group">
     <label for="vibeId" class="form-label">Vibe</label>
     <select id="vibeId" name="vibeId" class="form-input">
+        <option value="">No specific vibe</option>
         {% for vibe in vibes %}
         <option value="{{ vibe.id }}">{{ vibe.name }}</option>
         {% endfor %}
@@ -639,6 +640,13 @@
         selectSourceImage(event.target.value);
     });
 
+    document.getElementById('vibeId').addEventListener('change', (event) => {
+        const randomizeVibe = document.getElementById('randomizeVibe');
+        if (event.target.value && randomizeVibe) {
+            randomizeVibe.checked = false;
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
         cachedImages.forEach(item => addCachedFileToList(item.name, item.path, item.thumbnail_url || ''));
 
@@ -683,15 +691,18 @@
             document.getElementById('provider').value = pluginSettings.provider || 'gemini';
             document.getElementById('randomizePhoto').checked = pluginSettings.randomizePhoto === 'true';
             document.getElementById('includeCachedInRandom').checked = pluginSettings.includeCachedInRandom === 'true';
-            document.getElementById('randomizeVibe').checked = pluginSettings.randomizeVibe === 'true';
             document.getElementById('geminiImageModel').value = pluginSettings.geminiImageModel || 'gemini-2.5-flash-image';
             document.getElementById('openaiImageModel').value = pluginSettings.openaiImageModel || 'gpt-image-2';
             document.getElementById('openaiImageQuality').value = pluginSettings.openaiImageQuality || 'medium';
             document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
             document.getElementById('showCaption').checked = pluginSettings.showCaption === 'true';
-            if (pluginSettings.vibeId) {
-                document.getElementById('vibeId').value = pluginSettings.vibeId;
-            }
+            const savedVibeId = pluginSettings.vibeId || '';
+            const vibeSelect = document.getElementById('vibeId');
+            vibeSelect.value = savedVibeId;
+            document.getElementById('randomizeVibe').checked = vibeSelect.value ? false : true;
+        } else {
+            document.getElementById('vibeId').value = '';
+            document.getElementById('randomizeVibe').checked = true;
         }
         toggleProviderOptions();
     });
