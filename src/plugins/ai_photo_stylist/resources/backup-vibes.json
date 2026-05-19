@@ -1,0 +1,34 @@
+[
+  {
+    "style_name": "立體派風格 (Cubism Style)",
+    "prompt": "Cubism art style inspired by Picasso, abstracted geometric shapes and interlocking planes, high contrast bold color blocks, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simplified flat background."
+  },
+  {
+    "style_name": "向量海報風 (Vector Poster Portrait)",
+    "prompt": "Transform this photo into a clean vector-style portrait poster, smooth simplified shapes, crisp edges, limited but vivid poster color palette, subtle facial detail, modern minimalist background, subject prominently centered, bold color blocks with cream, red, blue, yellow, teal, and soft black accents, preserve the person’s identity and recognizable features, optimized for a medium-resolution e-paper display, strong contrast, visually clean and readable, no text, no logo"
+  },
+  {
+    "style_name": "絲網印刷海報風 (Screen Print)",
+    "prompt": "Vintage screen print poster aesthetic, layered ink alignment, high contrast color separation, bold textures, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, clean solid background."
+  },
+  {
+    "style_name": "厚塗壓克力畫風 (Impasto Acrylic)",
+    "prompt": "Thick impasto acrylic painting style, vibrant non-blended color strokes, high physical texture, sharp highlights, portrait of the original subject(s) from the photo, preserve the exact subjects and number of people, do not add or invent any person, simplified abstract background."
+  },
+  {
+    "style_name": "黑板粉筆畫風 (Chalkboard Art)",
+    "prompt": "Chalk art style, vibrant colored chalk drawings on a clean black chalkboard background, sharp line work, minimal chalkboard background."
+  },
+  {
+    "style_name": "彩色刮畫風 (Scratchboard Art)",
+    "prompt": "Color scratchboard art style, vibrant colored lines etched out of a solid black background, high contrast, sharp line details, clean black background."
+  },
+  {
+    "style_name": "雜誌社論插畫風 (Editorial Illustration)",
+    "prompt": "Modern magazine editorial illustration, stylish portrait, muted yet distinct color blocks, elegant clean linework, sophisticated minimalist background."
+  },
+  {
+    "style_name": "復古明信片風 (Vintage Postcard)",
+    "prompt": "Early 20th-century retro postcard illustration, faded yet distinct lithographic colors, subtle paper texture, minimalist scenic background."
+  }
+]
