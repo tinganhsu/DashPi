@@ -20,11 +20,18 @@ import time
 logger = logging.getLogger(__name__)
 
 GEMINI_IMAGE_MODELS = [
-    "gemini-2.5-flash-image",
-    "gemini-3-pro-image-preview",
-    "gemini-3.1-flash-image-preview",
+    "gemini-3.1-flash-image",
+    "gemini-3-pro-image",
 ]
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-image"
+# Older saved settings may still reference generateContent-era model ids.
+LEGACY_GEMINI_MODEL_MAP = {
+    "gemini-2.5-flash-image": "gemini-3.1-flash-image",
+    "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+    "gemini-3-pro-image-preview": "gemini-3-pro-image",
+}
+GEMINI_INTERACTION_POLL_SECONDS = 5
+GEMINI_INTERACTION_TIMEOUT_SECONDS = 300
 OPENAI_IMAGE_MODELS = ["gpt-image-2", "gpt-image-1"]
 DEFAULT_OPENAI_MODEL = "gpt-image-2"
 OPENAI_IMAGE_QUALITIES = {"auto", "low", "medium", "high"}
@@ -161,6 +168,7 @@ class AIPhotoStylist(BasePlugin):
                 if not api_key:
                     raise RuntimeError("Google Gemini API Key not configured. Add GOOGLE_GEMINI_SECRET in Settings > API Keys.")
                 model = settings.get("geminiImageModel", DEFAULT_GEMINI_MODEL)
+                model = LEGACY_GEMINI_MODEL_MAP.get(model, model)
                 if model not in GEMINI_IMAGE_MODELS:
                     raise RuntimeError("Invalid Gemini image model provided.")
                 generated = self._generate_with_gemini(api_key, model, image_path, final_prompt, dimensions)
@@ -534,36 +542,54 @@ class AIPhotoStylist(BasePlugin):
     def _generate_with_gemini(self, api_key, model, image_path, prompt, dimensions):
         try:
             from google import genai
-            from google.genai import types
         except ImportError as exc:
-            raise RuntimeError("Google Gemini SDK not installed. Run: pip install google-genai") from exc
+            raise RuntimeError('Google Gemini SDK not installed. Run: pip install "google-genai>=2.3.0"') from exc
 
         api_key = api_key.encode("ascii", errors="ignore").decode("ascii").strip()
         client = genai.Client(api_key=api_key)
+        if not hasattr(client, "interactions"):
+            raise RuntimeError('Google Gemini SDK too old for the Interactions API. Run: pip install -U "google-genai>=2.3.0"')
 
         aspect_ratio = "16:9" if dimensions[0] >= dimensions[1] else "9:16"
+        buf = BytesIO()
         with Image.open(image_path) as input_image:
-            input_image = input_image.convert("RGB").copy()
+            input_image.convert("RGB").save(buf, format="PNG")
+        source_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        buf.close()
 
-        response = client.models.generate_content(
+        interaction = client.interactions.create(
             model=model,
-            contents=[prompt, input_image],
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
-            ),
+            input=[
+                {"type": "text", "text": prompt},
+                {"type": "image", "data": source_b64, "mime_type": "image/png"},
+            ],
+            response_format={"type": "image", "aspect_ratio": aspect_ratio},
+            background=True,
         )
 
-        parts = getattr(response, "parts", None) or []
-        for part in parts:
-            inline_data = getattr(part, "inline_data", None)
-            if inline_data is not None:
-                data = getattr(inline_data, "data", None)
-                if data:
-                    buf = BytesIO(data)
-                    image = Image.open(buf).convert("RGB").copy()
-                    buf.close()
-                    return image
+        deadline = time.monotonic() + GEMINI_INTERACTION_TIMEOUT_SECONDS
+        while getattr(interaction, "status", None) == "in_progress":
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Gemini interaction {interaction.id} still in progress after "
+                    f"{GEMINI_INTERACTION_TIMEOUT_SECONDS}s, giving up."
+                )
+            time.sleep(GEMINI_INTERACTION_POLL_SECONDS)
+            interaction = client.interactions.get(id=interaction.id)
+
+        status = getattr(interaction, "status", None)
+        if status not in (None, "completed"):
+            raise RuntimeError(f"Gemini interaction finished with status: {status}")
+
+        output_image = getattr(interaction, "output_image", None)
+        data = getattr(output_image, "data", None)
+        if data:
+            if isinstance(data, str):
+                data = base64.b64decode(data)
+            image_buf = BytesIO(data)
+            image = Image.open(image_buf).convert("RGB").copy()
+            image_buf.close()
+            return image
 
         raise RuntimeError("Gemini returned no image in response.")
 
