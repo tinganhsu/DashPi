@@ -30,7 +30,6 @@ LEGACY_GEMINI_MODEL_MAP = {
     "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
     "gemini-3-pro-image-preview": "gemini-3-pro-image",
 }
-GEMINI_INTERACTION_POLL_SECONDS = 5
 GEMINI_INTERACTION_TIMEOUT_SECONDS = 300
 OPENAI_IMAGE_MODELS = ["gpt-image-2", "gpt-image-1"]
 DEFAULT_OPENAI_MODEL = "gpt-image-2"
@@ -557,6 +556,8 @@ class AIPhotoStylist(BasePlugin):
         source_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         buf.close()
 
+        # 影像模型不支援 background interaction（400 invalid_request），
+        # 只能同步呼叫並拉長 HTTP timeout 等待生成完成。
         interaction = client.interactions.create(
             model=model,
             input=[
@@ -564,18 +565,8 @@ class AIPhotoStylist(BasePlugin):
                 {"type": "image", "data": source_b64, "mime_type": "image/png"},
             ],
             response_format={"type": "image", "aspect_ratio": aspect_ratio},
-            background=True,
+            timeout=GEMINI_INTERACTION_TIMEOUT_SECONDS,
         )
-
-        deadline = time.monotonic() + GEMINI_INTERACTION_TIMEOUT_SECONDS
-        while getattr(interaction, "status", None) == "in_progress":
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    f"Gemini interaction {interaction.id} still in progress after "
-                    f"{GEMINI_INTERACTION_TIMEOUT_SECONDS}s, giving up."
-                )
-            time.sleep(GEMINI_INTERACTION_POLL_SECONDS)
-            interaction = client.interactions.get(id=interaction.id)
 
         status = getattr(interaction, "status", None)
         if status not in (None, "completed"):
