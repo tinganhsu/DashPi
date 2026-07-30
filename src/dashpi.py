@@ -19,8 +19,14 @@ import warnings
 warnings.filterwarnings("ignore", message=".*Busy Wait: Held high.*")
 
 from utils.app_utils import generate_startup_image
+from utils.access_control import (
+    DASHPI_WIFI_PUBLIC_ENDPOINTS,
+    DEFAULT_PUBLIC_ENDPOINTS,
+    install_access_control,
+    resolve_secret_key,
+)
 from utils.wifi_manager import WifiManager
-from flask import Flask, request, session, redirect, url_for
+from flask import Flask
 from config import Config
 from display.display_manager import DisplayManager
 from refresh_task import RefreshTask
@@ -58,54 +64,11 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB upload limit (config backups with images)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-
-@app.before_request
-def require_login():
-    """Global request interceptor for authentication and CSRF protection."""
-    # 1. CSRF Protection (Origin/Referer validation for mutations)
-    if request.method in ['POST', 'PUT', 'DELETE']:
-        origin = request.headers.get('Origin')
-        referer = request.headers.get('Referer')
-        target = f"{request.scheme}://{request.host}"
-        
-        # Check Origin first, fall back to Referer
-        if origin:
-            if origin != target:
-                logger.warning(f"CSRF Blocked: Origin mismatch ({origin} != {target})")
-                return "CSRF validation failed", 403
-        elif referer:
-            if not referer.startswith(target):
-                logger.warning(f"CSRF Blocked: Referer mismatch ({referer} not starting with {target})")
-                return "CSRF validation failed", 403
-        else:
-            # Most modern browsers send Origin for POST. If both missing, it's suspicious.
-            logger.warning(f"CSRF Blocked: Missing Origin/Referer for {request.method} request")
-            return "CSRF validation failed", 403
-
-    # 2. Authentication Protection
-    # Define public routes that don't require login
-    public_endpoints = [
-        'auth.login', 'auth.setup_password', 'static', 
-        'wifi.wifi_portal', 'wifi.wifi_scan', 'wifi.wifi_connect', 
-        'wifi.wifi_status', 'wifi.captive_android', 'wifi.captive_apple', 
-        'wifi.captive_windows'
-    ]
-    
-    # Also allow viewing the display and current image without login
-    public_endpoints.extend(['main.display_page', 'main.get_current_image'])
-
-    if request.endpoint in public_endpoints or not request.endpoint:
-        return
-
-    # If password not set yet, redirect to setup (handled in auth blueprint too but good to have here)
-    if not device_config.has_password():
-        if request.endpoint != 'auth.setup_password':
-            return redirect(url_for('auth.setup_password'))
-        return
-
-    # Check if authenticated
-    if not session.get('authenticated'):
-        return redirect(url_for('auth.login', next=request.url))
+# Persist across restarts. The previous os.urandom(24) call on every serve()
+# signed everyone out whenever the process restarted.
+app.secret_key = resolve_secret_key(
+    os.path.join(Config.BASE_DIR, "config", "secret_key")
+)
 
 template_dirs = [
    os.path.join(os.path.dirname(__file__), "templates"),    # Default template folder
@@ -147,6 +110,12 @@ app.register_blueprint(loops_bp)
 app.register_blueprint(wifi_bp)
 app.register_blueprint(auth_bp)
 register_plugin_blueprints(app)
+
+install_access_control(
+    app,
+    device_config,
+    public_endpoints=DEFAULT_PUBLIC_ENDPOINTS | DASHPI_WIFI_PUBLIC_ENDPOINTS,
+)
 
 # Inject project_name and version into all templates
 @app.context_processor
@@ -218,9 +187,6 @@ if __name__ == '__main__':
         display_manager.display_image(img)
 
     try:
-        # Run the Flask app
-        app.secret_key = os.urandom(24).hex()
-
         # Get local IP address for display (only in dev mode when running on non-Pi)
         if DEV_MODE:
             try:

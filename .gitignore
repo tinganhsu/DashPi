@@ -129,6 +129,8 @@ celerybeat.pid
 
 # Environments
 .env
+# Durable Flask session secret (written by utils.access_control)
+src/config/secret_key
 .venv
 env/
 venv/
