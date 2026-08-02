@@ -3,12 +3,17 @@
 import os
 import importlib
 import logging
+import sys
 from utils.app_utils import resolve_path
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 PLUGINS_DIR = 'plugins'
 PLUGIN_CLASSES = {}
+
+# Ids loaded from the user root. Tracked separately from PLUGIN_CLASSES, which
+# also holds the built-ins: a reload must never be able to drop one of those.
+USER_PLUGIN_IDS = set()
 
 def _ensure_importable(plugin_dir):
     """Make ``plugins.<id>`` resolvable for a plugin outside the built-in root.
@@ -60,9 +65,94 @@ def load_plugins(plugins_config):
             if plugin_class:
                 # Create an instance of the plugin class and add it to the plugin_classes dictionary
                 PLUGIN_CLASSES[plugin_id] = plugin_class(plugin)
+                if plugin.get("user_installed"):
+                    USER_PLUGIN_IDS.add(plugin_id)
 
         except Exception as e:
             logger.error(f"Failed to load plugin {plugin_id}: {e}")
+
+
+def _forget_modules(plugin_id):
+    """Drop a plugin's modules so the next import reads from disk.
+
+    Clearing beats importlib.reload() here: a plugin is a package of several
+    modules (api.py, constants.py, …) and reload only re-runs the one module
+    handed to it.
+    """
+    prefix = f"plugins.{plugin_id}"
+    for name in [n for n in sys.modules if n == prefix or n.startswith(prefix + ".")]:
+        del sys.modules[name]
+
+
+def _exposes_blueprint(instance):
+    """Whether this plugin needs a restart to be fully wired up.
+
+    Flask refuses register_blueprint() once the app has served a request, so a
+    plugin that ships one cannot be finished in-process.
+    """
+    get_blueprint = getattr(instance, "get_blueprint", None)
+    if not callable(get_blueprint):
+        return False
+    try:
+        return get_blueprint() is not None
+    except Exception as e:
+        logger.error(f"Plugin get_blueprint() raised: {e}")
+        return False
+
+
+def reload_user_plugins(device_config):
+    """Sync the user-installed plugins to what is on disk, without a restart.
+
+    Returns what changed and whether a restart is still owed. Everything the
+    web UI reads — the plugin grid, /plugin/<id>, the loops page, the asset
+    route — resolves through the config list and PLUGIN_CLASSES at request
+    time, so refreshing both is what makes an install visible immediately.
+    """
+    # The CLI has just created directories the import system already cached as
+    # absent, and may have installed dependencies into the venv.
+    importlib.invalidate_caches()
+
+    device_config.reload_plugins()
+    on_disk = {
+        plugin["id"]: plugin
+        for plugin in device_config.get_plugins()
+        if plugin.get("user_installed") and plugin.get("id")
+    }
+
+    loaded, removed = [], []
+    restart_reason = None
+
+    # Only ids loaded from the user root are candidates for unloading, so a
+    # built-in can never be dropped.
+    for plugin_id in sorted(USER_PLUGIN_IDS - set(on_disk)):
+        PLUGIN_CLASSES.pop(plugin_id, None)
+        USER_PLUGIN_IDS.discard(plugin_id)
+        _forget_modules(plugin_id)
+        removed.append(plugin_id)
+        logger.info(f"Unloaded plugin '{plugin_id}'")
+
+    for plugin_id, plugin in sorted(on_disk.items()):
+        # Re-import unconditionally: an update overwrites the same id in place,
+        # and comparing revisions here would duplicate what the CLI already did.
+        _forget_modules(plugin_id)
+        load_plugins([plugin])
+        instance = PLUGIN_CLASSES.get(plugin_id)
+        if instance is None:
+            USER_PLUGIN_IDS.discard(plugin_id)
+            continue
+        loaded.append(plugin_id)
+        if restart_reason is None and _exposes_blueprint(instance):
+            restart_reason = (
+                f"'{plugin_id}' registers its own web routes, and Flask only "
+                "accepts those while the server is starting up."
+            )
+
+    return {
+        "loaded": loaded,
+        "removed": removed,
+        "restart_required": restart_reason is not None,
+        "restart_reason": restart_reason,
+    }
 
 def get_plugin_instance(plugin_config):
     plugin_id = plugin_config.get("id")

@@ -4,6 +4,13 @@ All notable changes to DashPi are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Third-party plugin root**: Plugins installed with `dashpi plugin install` now live in `<project_root>/plugins` instead of `src/plugins`, so they are no longer untracked directories inside the tracked source tree. The location is overridable with `DASHPI_PLUGINS_DIR`, and the web UI passes it to the CLI so the installer and plugin discovery cannot disagree. Built-in plugins always win an id collision, and `dashpi plugin uninstall` can no longer reach — and delete — a built-in.
+- **Plugin hot reload**: Installing, updating, or uninstalling a plugin from the web UI now takes effect in the running server instead of restarting the service. The reload's verdict is streamed into the existing job output. A plugin that registers its own Flask routes still needs a restart, because Flask refuses `register_blueprint()` after the first request has been served, and the output says so explicitly.
+
+### Changed
+- **Plugin management keys on install location**: Whether a plugin can be updated or uninstalled is now decided by which root it was found in, not by the presence of a `repository` key in its `plugin-info.json`. The install CLI only writes that key when `jq` is available, so a plugin installed without it could not be managed from the UI at all.
+
 ### Fixed
 - **Image Upload reconciliation**: `_reconcile_with_disk()` now drops listed files that no longer exist, instead of only adding unlisted ones. A single vanished path used to stay in the settings list forever and raise on every render, recoverable only by editing `config.json` by hand. The prune stays behind the existing check on the saved-images directory, so a temporarily absent mount is not read as "the user deleted everything".
 - **Plugin asset route**: The directory-traversal guard in `/images/<plugin_id>/<filename>` compared paths without a trailing separator, so a sibling directory sharing the plugins-root prefix (`plugins_backup`) counted as being inside it. `send_from_directory` still refused to serve the file, so nothing leaked, but the request got a confusing 404 instead of the 403 the guard exists to return. The check is now scoped to the requesting plugin's own directory.

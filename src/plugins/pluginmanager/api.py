@@ -43,7 +43,36 @@ def _purge_old_jobs():
             del _JOBS[job_id]
 
 
-def _run_subprocess_job(job_id, cmd, env, cwd, success_marker):
+def _reload_into_running_app(job, app):
+    """Pick up what the CLI just wrote, and report the verdict as job output.
+
+    The lines land in the same stream the UI already renders, so the user is
+    told what happened without a new endpoint or a new widget.
+    """
+    from plugins.plugin_registry import reload_user_plugins
+
+    try:
+        with app.app_context():
+            result = reload_user_plugins(app.config["DEVICE_CONFIG"])
+    except Exception as exc:
+        with job["lock"]:
+            job["lines"].append(f"[RESTART-REQUIRED] Could not reload plugins: {exc}")
+            job["lines"].append("[RESTART-REQUIRED] Run: sudo systemctl restart dashpi.service")
+        return
+
+    with job["lock"]:
+        for plugin_id in result["removed"]:
+            job["lines"].append(f"[INFO] Unloaded '{plugin_id}'")
+        for plugin_id in result["loaded"]:
+            job["lines"].append(f"[INFO] Loaded '{plugin_id}'")
+        if result["restart_required"]:
+            job["lines"].append(f"[RESTART-REQUIRED] {result['restart_reason']}")
+            job["lines"].append("[RESTART-REQUIRED] Run: sudo systemctl restart dashpi.service")
+        else:
+            job["lines"].append("[INFO] Ready to use — no restart needed.")
+
+
+def _run_subprocess_job(job_id, cmd, env, cwd, success_marker, app=None):
     job = _get_job(job_id)
     if not job:
         return
@@ -67,6 +96,12 @@ def _run_subprocess_job(job_id, cmd, env, cwd, success_marker):
 
         output = "\n".join(job["lines"])
         success = proc.returncode == 0 or success_marker in output
+
+        # Reload before marking the job done, or the UI declares success while
+        # the plugin is still invisible to the running server.
+        if success and app is not None:
+            _reload_into_running_app(job, app)
+
         with job["lock"]:
             job["done"] = True
             job["success"] = success
@@ -133,9 +168,15 @@ def _operation_env():
     # somewhere the app does not look. Set, not defaulted: the launcher exports
     # a PROJECT_DIR the CLI would otherwise derive a different root from.
     env["DASHPI_PLUGINS_DIR"] = device_config.user_plugins_dir
-    env.setdefault("APPNAME", "dashpi")
-    default_venv = os.path.join("/usr/local", env["APPNAME"], f"venv_{env['APPNAME']}")
-    env.setdefault("VENV_PATH", default_venv)
+
+    # The CLI restarts the service when APPNAME is set, which is right for a
+    # terminal but not here: this job reloads the plugin into the running
+    # process itself, and a restart mid-job would kill the process streaming
+    # the output. Cleared rather than left alone, because the launcher exports
+    # APPNAME into the environment this inherits.
+    appname = os.environ.get("APPNAME") or "dashpi"
+    env["APPNAME"] = ""
+    env.setdefault("VENV_PATH", os.path.join("/usr/local", appname, f"venv_{appname}"))
     return env
 
 
@@ -146,9 +187,11 @@ def _start_cli_job(args, success_marker):
 
     _purge_old_jobs()
     job_id, _ = _create_job()
+    # The worker thread has no request context, so hand it the app object.
+    app = current_app._get_current_object()
     thread = threading.Thread(
         target=_run_subprocess_job,
-        args=(job_id, ["bash", cli, *args], _operation_env(), _project_dir(), success_marker),
+        args=(job_id, ["bash", cli, *args], _operation_env(), _project_dir(), success_marker, app),
         daemon=True,
     )
     thread.start()

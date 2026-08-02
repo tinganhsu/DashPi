@@ -40,6 +40,7 @@ def user_root(tmp_path):
 
     original_path = list(plugins.__path__)
     original_classes = dict(plugin_registry.PLUGIN_CLASSES)
+    original_user_ids = set(plugin_registry.USER_PLUGIN_IDS)
     original_modules = set(sys.modules)
 
     yield plugin_dir
@@ -47,6 +48,8 @@ def user_root(tmp_path):
     plugins.__path__[:] = original_path
     plugin_registry.PLUGIN_CLASSES.clear()
     plugin_registry.PLUGIN_CLASSES.update(original_classes)
+    plugin_registry.USER_PLUGIN_IDS.clear()
+    plugin_registry.USER_PLUGIN_IDS.update(original_user_ids)
     for name in set(sys.modules) - original_modules:
         if name.startswith("plugins."):
             del sys.modules[name]
@@ -97,6 +100,95 @@ class TestLoadingFromTheUserRoot:
         entry["plugin_dir"] = str(user_root.parent / "not_installed")
         plugin_registry.load_plugins([entry])
 
+        assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
+
+
+class TestHotReload:
+    """Installing must not require a restart to become visible."""
+
+    def _config(self, mock_device_config, entries):
+        mock_device_config.get_plugins.return_value = entries
+        mock_device_config.reload_plugins.return_value = None
+        return mock_device_config
+
+    def test_a_plugin_installed_after_boot_is_loaded(self, user_root, mock_device_config):
+        from plugins import plugin_registry
+
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["loaded"] == ["mini_weather"]
+        assert result["restart_required"] is False
+        assert "mini_weather" in plugin_registry.PLUGIN_CLASSES
+
+    def test_a_removed_plugin_is_unloaded(self, user_root, mock_device_config):
+        from plugins import plugin_registry
+
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+        plugin_registry.reload_user_plugins(config)
+
+        self._config(mock_device_config, [])
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["removed"] == ["mini_weather"]
+        assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
+        assert not [n for n in sys.modules if n.startswith("plugins.mini_weather")]
+
+    def test_a_builtin_is_never_unloaded(self, user_root, mock_device_config):
+        """The built-ins are in the same map, and the config list here has none."""
+        from plugins import plugin_registry
+
+        plugin_registry.PLUGIN_CLASSES["clock"] = object()
+        config = self._config(mock_device_config, [])
+
+        plugin_registry.reload_user_plugins(config)
+
+        assert "clock" in plugin_registry.PLUGIN_CLASSES
+
+    def test_an_updated_plugin_is_re_read_from_disk(self, user_root, mock_device_config):
+        from plugins import plugin_registry
+
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+        plugin_registry.reload_user_plugins(config)
+
+        (user_root / "mini_weather.py").write_text(PLUGIN_SOURCE + "\nMARKER = 'v2'\n")
+        plugin_registry.reload_user_plugins(config)
+
+        assert sys.modules["plugins.mini_weather.mini_weather"].MARKER == "v2"
+
+    def test_a_plugin_with_its_own_routes_asks_for_a_restart(self, user_root, mock_device_config):
+        """Flask refuses register_blueprint() once the app has served a request."""
+        from plugins import plugin_registry
+
+        (user_root / "mini_weather.py").write_text(
+            PLUGIN_SOURCE
+            + '''
+from flask import Blueprint
+
+
+def _bp():
+    return Blueprint("mini_weather_api", __name__)
+
+
+MiniWeather.get_blueprint = lambda self: _bp()
+'''
+        )
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["restart_required"] is True
+        assert "mini_weather" in result["restart_reason"]
+
+    def test_a_broken_plugin_does_not_abort_the_reload(self, user_root, mock_device_config):
+        from plugins import plugin_registry
+
+        (user_root / "mini_weather.py").write_text("raise RuntimeError('bad plugin')\n")
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["loaded"] == []
         assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
 
 
