@@ -137,6 +137,80 @@ class TestConfigPlugins:
         cfg.set_plugin_order(["clock"])
         assert cfg.config["plugin_order"] == ["clock"]
 
+    def test_builtin_carries_its_directory_and_is_not_user_installed(self, cfg):
+        plugin = cfg.get_plugin("clock")
+        assert plugin["plugin_dir"] == os.path.join(cfg.builtin_plugins_dir, "clock")
+        assert plugin["user_installed"] is False
+
+
+class TestConfigUserPlugins:
+    """Third-party plugins are discovered from a second root beside src/."""
+
+    @pytest.fixture
+    def user_plugins(self, tmp_path, monkeypatch):
+        directory = tmp_path / "user_plugins"
+        directory.mkdir()
+        monkeypatch.setenv("DASHPI_PLUGINS_DIR", str(directory))
+        return directory
+
+    def _install(self, directory, plugin_id, info=None):
+        plugin_dir = directory / plugin_id
+        plugin_dir.mkdir()
+        (plugin_dir / "plugin-info.json").write_text(
+            json.dumps(info or {"id": plugin_id, "display_name": plugin_id, "class": "X"})
+        )
+        return plugin_dir
+
+    def test_user_plugin_is_discovered(self, user_plugins, cfg):
+        self._install(user_plugins, "mini_weather")
+        cfg.reload_plugins()
+
+        plugin = cfg.get_plugin("mini_weather")
+        assert plugin is not None
+        assert plugin["user_installed"] is True
+        assert plugin["plugin_dir"] == str(user_plugins / "mini_weather")
+
+    def test_a_user_plugin_cannot_shadow_a_builtin(self, user_plugins, cfg):
+        """Same id in both roots: the built-in wins and stays built-in."""
+        self._install(user_plugins, "clock", {"id": "clock", "display_name": "Fake", "class": "X"})
+        cfg.reload_plugins()
+
+        matches = [p for p in cfg.plugins_list if p["id"] == "clock"]
+        assert len(matches) == 1
+        assert matches[0]["user_installed"] is False
+        assert matches[0]["display_name"] == "Clock"
+
+    def test_a_malformed_plugin_does_not_stop_discovery(self, user_plugins, cfg):
+        broken = user_plugins / "broken"
+        broken.mkdir()
+        (broken / "plugin-info.json").write_text("{not json")
+        self._install(user_plugins, "good")
+        cfg.reload_plugins()
+
+        assert cfg.get_plugin("good") is not None
+        assert cfg.get_plugin("broken") is None
+        assert cfg.get_plugin("clock") is not None
+
+    def test_metadata_without_an_id_is_skipped(self, user_plugins, cfg):
+        self._install(user_plugins, "anonymous", {"display_name": "No id", "class": "X"})
+        cfg.reload_plugins()
+
+        assert [p for p in cfg.plugins_list if p.get("display_name") == "No id"] == []
+
+    def test_a_missing_user_root_is_not_an_error(self, tmp_path, monkeypatch, cfg):
+        monkeypatch.setenv("DASHPI_PLUGINS_DIR", str(tmp_path / "does_not_exist"))
+        cfg.reload_plugins()
+
+        assert cfg.get_plugin("clock") is not None
+
+    def test_reload_picks_up_a_plugin_installed_after_startup(self, user_plugins, cfg):
+        assert cfg.get_plugin("late_arrival") is None
+
+        self._install(user_plugins, "late_arrival")
+        cfg.reload_plugins()
+
+        assert cfg.get_plugin("late_arrival") is not None
+
 
 class TestConfigLoopManager:
     def test_loop_manager_loaded(self, cfg):

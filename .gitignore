@@ -175,6 +175,9 @@ mock_display_output/
 /src/static/scripts/
 /src/static/styles/
 
+# Third-party plugins installed by `dashpi plugin install`
+/plugins/
+
 # Internal working documents (personal use)
 .internal/
 

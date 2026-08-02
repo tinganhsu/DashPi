@@ -24,6 +24,26 @@ class Config:
     # Directory path for storing plugin instance images
     plugin_image_dir = os.path.join(BASE_DIR, "static", "images", "plugins")
 
+    @property
+    def builtin_plugins_dir(self):
+        """Where the plugins shipped with DashPi live."""
+        return os.path.join(self.BASE_DIR, "plugins")
+
+    @property
+    def user_plugins_dir(self):
+        """Where third-party plugins are installed.
+
+        Beside src/ rather than inside it, so installing one does not mix
+        untracked directories into the source tree. The installed layout
+        symlinks /usr/local/<app>/src to the checkout and an update deletes
+        /usr/local/<app>, so the real path — not the symlinked one — is what
+        survives. Read from the environment on each access so a deployment can
+        redirect it without touching the code.
+        """
+        return os.getenv("DASHPI_PLUGINS_DIR") or os.path.join(
+            os.path.dirname(os.path.realpath(self.BASE_DIR)), "plugins"
+        )
+
     def __init__(self):
         self._config_lock = threading.Lock()
         self.config = self.read_config()
@@ -44,21 +64,73 @@ class Config:
         return config
 
     def read_plugins_list(self):
-        """Reads the plugin-info.json config JSON from each plugin folder. Excludes the base plugin."""
-        # Iterate over all plugin folders
+        """Reads plugin-info.json from every plugin folder in both plugin roots.
+
+        Each entry gains two derived keys: ``plugin_dir``, because a plugin id
+        alone no longer says where the plugin lives, and ``user_installed``,
+        which is taken from the root it was found in rather than from a
+        ``repository`` key — the install CLI only writes that key when jq is
+        available, so a plugin without it would otherwise be unmanageable.
+
+        Built-ins are read first and win any id collision, so dropping a
+        directory named after a core plugin into the user root cannot shadow it.
+        The base plugin has no plugin-info.json and is therefore excluded.
+        """
         plugins_list = []
-        for plugin in sorted(os.listdir(os.path.join(self.BASE_DIR, "plugins"))):
-            plugin_path = os.path.join(self.BASE_DIR, "plugins", plugin)
-            if os.path.isdir(plugin_path) and plugin != "__pycache__":
-                # Check if the plugin-info.json file exists
+        seen = set()
+
+        for root, user_installed in ((self.builtin_plugins_dir, False),
+                                     (self.user_plugins_dir, True)):
+            if not os.path.isdir(root):
+                if not user_installed:
+                    logger.warning(f"Built-in plugins directory not found: {root}")
+                continue
+
+            for plugin in sorted(os.listdir(root)):
+                plugin_path = os.path.join(root, plugin)
+                if not os.path.isdir(plugin_path) or plugin == "__pycache__":
+                    continue
+
                 plugin_info_file = os.path.join(plugin_path, "plugin-info.json")
-                if os.path.isfile(plugin_info_file):
-                    logger.debug(f"Reading plugin info from {plugin_info_file}")
+                if not os.path.isfile(plugin_info_file):
+                    continue
+
+                logger.debug(f"Reading plugin info from {plugin_info_file}")
+                try:
                     with open(plugin_info_file) as f:
                         plugin_info = json.load(f)
-                    plugins_list.append(plugin_info)
+                except (OSError, json.JSONDecodeError) as e:
+                    # One malformed third-party plugin must not stop boot.
+                    logger.warning(f"Skipping plugin metadata {plugin_info_file}: {e}")
+                    continue
+
+                plugin_id = plugin_info.get("id")
+                if not plugin_id:
+                    logger.warning(f"Plugin metadata has no id: {plugin_info_file}")
+                    continue
+                if plugin_id in seen:
+                    logger.warning(
+                        f"Ignoring {plugin_path}: plugin id '{plugin_id}' is already "
+                        f"provided by a built-in and cannot be shadowed"
+                    )
+                    continue
+
+                seen.add(plugin_id)
+                plugin_info["plugin_dir"] = plugin_path
+                plugin_info["user_installed"] = user_installed
+                plugins_list.append(plugin_info)
 
         return plugins_list
+
+    def reload_plugins(self):
+        """Re-scan both plugin roots.
+
+        The list is otherwise read once at startup, so a plugin installed while
+        the server is running would stay invisible until a restart. Everything
+        that reads plugins goes through get_plugins()/get_plugin(), so
+        refreshing this one list is enough.
+        """
+        self.plugins_list = self.read_plugins_list()
 
     def write_config(self):
         """Updates the cached config from the model objects and writes to the config file atomically.
