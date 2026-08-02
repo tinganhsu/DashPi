@@ -90,8 +90,20 @@ def _cli_script():
 
 
 def _third_party_plugins():
+    """Plugins the user installed, i.e. everything found in the user root.
+
+    Keyed on where the plugin was found rather than on a repository key. The
+    CLI only writes that key when jq happens to be installed, so keying on it
+    made a plugin installed without jq impossible to update or uninstall from
+    the UI — and would make a built-in that ever gained the key removable.
+    """
     device_config = current_app.config["DEVICE_CONFIG"]
-    return [plugin for plugin in device_config.get_plugins() if plugin.get("repository")]
+    return [plugin for plugin in device_config.get_plugins() if plugin.get("user_installed")]
+
+
+def _plugin_dir(plugin):
+    """Where a plugin actually lives, as recorded by discovery."""
+    return plugin.get("plugin_dir") or ""
 
 
 def _validate_install_url(url):
@@ -115,7 +127,12 @@ def _validate_install_url(url):
 
 def _operation_env():
     project_dir = _project_dir()
+    device_config = current_app.config["DEVICE_CONFIG"]
     env = {**os.environ, "PROJECT_DIR": project_dir}
+    # Hand the CLI the same path discovery reads, so an install can never land
+    # somewhere the app does not look. Set, not defaulted: the launcher exports
+    # a PROJECT_DIR the CLI would otherwise derive a different root from.
+    env["DASHPI_PLUGINS_DIR"] = device_config.user_plugins_dir
     env.setdefault("APPNAME", "dashpi")
     default_venv = os.path.join("/usr/local", env["APPNAME"], f"venv_{env['APPNAME']}")
     env.setdefault("VENV_PATH", default_venv)
@@ -180,9 +197,7 @@ def check_updates():
     if not plugin_info:
         return jsonify({"success": False, "error": "Plugin not found"}), 400
 
-    from config import Config
-
-    plugin_dir = os.path.join(Config.BASE_DIR, "plugins", plugin_id)
+    plugin_dir = _plugin_dir(plugin_info)
     if not os.path.isdir(os.path.join(plugin_dir, ".git")):
         return jsonify({"success": False, "error": "Plugin is not a git repository"}), 400
 

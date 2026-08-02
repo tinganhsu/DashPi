@@ -23,13 +23,10 @@ class PluginManager(BasePlugin):
         return api.plugin_manage_bp
 
     @staticmethod
-    def _get_plugin_last_commit_date(plugin_id):
+    def _get_plugin_last_commit_date(plugin_dir):
         """Return the local git commit timestamp for an installed plugin."""
         try:
-            from config import Config
-
-            plugin_dir = os.path.join(Config.BASE_DIR, "plugins", plugin_id)
-            if not os.path.isdir(os.path.join(plugin_dir, ".git")):
+            if not plugin_dir or not os.path.isdir(os.path.join(plugin_dir, ".git")):
                 return None
 
             result = subprocess.run(
@@ -42,7 +39,7 @@ class PluginManager(BasePlugin):
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
         except Exception as exc:
-            logger.debug("Could not get commit date for plugin %s: %s", plugin_id, exc)
+            logger.debug("Could not get commit date for plugin at %s: %s", plugin_dir, exc)
         return None
 
     def generate_settings_template(self):
@@ -53,11 +50,12 @@ class PluginManager(BasePlugin):
 
             device_config = current_app.config.get("DEVICE_CONFIG")
             plugins = device_config.get_plugins() if device_config else []
-            third_party = [dict(plugin) for plugin in plugins if plugin.get("repository")]
+            # Keyed on the root the plugin was found in, not on a repository
+            # key the CLI only writes when jq is available. See api.py.
+            third_party = [dict(plugin) for plugin in plugins if plugin.get("user_installed")]
             for plugin in third_party:
-                plugin_id = plugin.get("id")
                 plugin["version_date"] = (
-                    self._get_plugin_last_commit_date(plugin_id) if plugin_id else None
+                    self._get_plugin_last_commit_date(plugin.get("plugin_dir"))
                 ) or "Unknown"
             template_params["third_party_plugins"] = third_party
         except RuntimeError:

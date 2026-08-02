@@ -1,7 +1,25 @@
 #!/usr/bin/env bash
 set -e
 
-PLUGINS_DIR="$PROJECT_DIR/src/plugins"
+# Third-party plugins are installed beside src/, never inside it.
+#
+# DASHPI_PLUGINS_DIR is what the web UI passes, taken straight from
+# Config.user_plugins_dir, so the installer and the discovery that has to find
+# the result can never disagree. The derivation below is for running
+# `dashpi plugin` from a terminal, where the launcher exports PROJECT_DIR as the
+# install prefix (/usr/local/dashpi) whose src/ is a symlink to the checkout.
+# The prefix is deleted and recreated by an update; the checkout is not, so
+# resolve through the symlink and install next to the real src/.
+if [[ -n "${DASHPI_PLUGINS_DIR:-}" ]]; then
+    PLUGINS_DIR="${DASHPI_PLUGINS_DIR}"
+elif [[ -z "${PROJECT_DIR:-}" ]]; then
+    echo "[ERROR] Neither DASHPI_PLUGINS_DIR nor PROJECT_DIR is set."
+    exit 1
+elif [[ -e "$PROJECT_DIR/src" ]]; then
+    PLUGINS_DIR="$(dirname "$(realpath "$PROJECT_DIR/src")")/plugins"
+else
+    PLUGINS_DIR="$PROJECT_DIR/plugins"
+fi
 
 command="${1:-}"
 shift || true
@@ -17,8 +35,10 @@ usage() {
 }
 
 require_plugins_dir() {
-    if [[ ! -d "$PLUGINS_DIR" ]]; then
-        echo "Plugins directory does not exist: $PLUGINS_DIR"
+    # The user plugin root does not exist until the first install, so create it
+    # rather than treating a fresh system as an error.
+    if ! mkdir -p "$PLUGINS_DIR" 2>/dev/null; then
+        echo "[ERROR] Plugins directory is not writable: $PLUGINS_DIR"
         exit 1
     fi
 }
