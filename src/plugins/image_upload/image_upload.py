@@ -162,16 +162,29 @@ class ImageUpload(BasePlugin):
         return image
 
     def _reconcile_with_disk(self, settings):
-        """Add any files on disk that aren't in the settings list (recovers from crashes).
+        """Square the settings list with what is actually on disk.
 
-        Only adds files that weren't recently removed by the user. This prevents
-        reconciliation from undoing intentional deletions via the web UI.
+        Adds files that are present but unlisted (recovers from crashes), and
+        drops listed files that are gone. Only adds files that weren't recently
+        removed by the user, so reconciliation never undoes an intentional
+        deletion made in the web UI.
         """
         image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heif', '.heic', '.avif'}
         saved_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'static', 'images', 'saved')
 
         if not os.path.isdir(saved_dir):
+            # Storage itself is missing — treat nothing as deleted, or a
+            # temporarily absent mount would wipe the user's whole list.
             return
+
+        # Drop entries whose file is gone. Without this, one path that
+        # disappeared — a manual delete, a restore that missed it, a move
+        # between hosts — stays listed forever and every render raises on it.
+        listed = settings.get('imageFiles[]') or []
+        present = [path for path in listed if os.path.isfile(path)]
+        if len(present) != len(listed):
+            logger.info(f"Dropped {len(listed) - len(present)} missing image(s) from settings")
+            settings['imageFiles[]'] = present
 
         current_files = set(settings.get('imageFiles[]', []))
         current_basenames = {os.path.basename(f) for f in current_files}

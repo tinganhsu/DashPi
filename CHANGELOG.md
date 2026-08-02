@@ -2,6 +2,11 @@
 
 All notable changes to DashPi are documented here.
 
+## [Unreleased]
+
+### Fixed
+- **Image Upload reconciliation**: `_reconcile_with_disk()` now drops listed files that no longer exist, instead of only adding unlisted ones. A single vanished path used to stay in the settings list forever and raise on every render, recoverable only by editing `config.json` by hand. The prune stays behind the existing check on the saved-images directory, so a temporarily absent mount is not read as "the user deleted everything".
+
 ## [2.2.4] — 2026-05-18
 
 ### Changed
