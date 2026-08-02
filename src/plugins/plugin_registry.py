@@ -15,6 +15,21 @@ PLUGIN_CLASSES = {}
 # also holds the built-ins: a reload must never be able to drop one of those.
 USER_PLUGIN_IDS = set()
 
+
+def plugin_template_roots(device_config):
+    """Directories Jinja must search to find a plugin's settings.html.
+
+    A plugin names its template "<id>/settings.html", relative to the root it
+    lives in, so every root has to be on the search path. Built-in first, to
+    match the precedence discovery and the import system already use.
+
+    The user root is included whether or not it exists yet: FileSystemLoader
+    resolves on each lookup, so the first plugin installed into a fresh system
+    is found without rebuilding the loader.
+    """
+    return [device_config.builtin_plugins_dir, device_config.user_plugins_dir]
+
+
 def _ensure_importable(plugin_dir):
     """Make ``plugins.<id>`` resolvable for a plugin outside the built-in root.
 
@@ -100,7 +115,7 @@ def _exposes_blueprint(instance):
         return False
 
 
-def reload_user_plugins(device_config):
+def reload_user_plugins(device_config, app=None):
     """Sync the user-installed plugins to what is on disk, without a restart.
 
     Returns what changed and whether a restart is still owed. Everything the
@@ -111,6 +126,12 @@ def reload_user_plugins(device_config):
     # The CLI has just created directories the import system already cached as
     # absent, and may have installed dependencies into the venv.
     importlib.invalidate_caches()
+
+    if app is not None:
+        # An updated plugin keeps rendering the settings.html compiled before
+        # the update otherwise: TEMPLATES_AUTO_RELOAD follows debug, which is
+        # off in production, so Jinja never re-reads a template it has cached.
+        app.jinja_env.cache.clear()
 
     device_config.reload_plugins()
     on_disk = {

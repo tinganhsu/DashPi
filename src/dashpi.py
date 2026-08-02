@@ -38,7 +38,7 @@ from blueprints.loops import loops_bp
 from blueprints.wifi import wifi_bp
 from blueprints.auth import auth_bp
 from jinja2 import ChoiceLoader, FileSystemLoader
-from plugins.plugin_registry import load_plugins, register_plugin_blueprints
+from plugins.plugin_registry import load_plugins, plugin_template_roots, register_plugin_blueprints
 from waitress import serve
 
 
@@ -70,13 +70,17 @@ app.secret_key = resolve_secret_key(
     os.path.join(Config.BASE_DIR, "config", "secret_key")
 )
 
+device_config = Config()
+
+# Built after the config, because the plugin roots come from it. A plugin names
+# its template relative to the root it lives in, so a plugin outside
+# src/plugins is unreachable unless that root is on the search path too.
 template_dirs = [
    os.path.join(os.path.dirname(__file__), "templates"),    # Default template folder
-   os.path.join(os.path.dirname(__file__), "plugins"),      # Plugin templates
+   *plugin_template_roots(device_config),                   # Plugin templates, both roots
 ]
 app.jinja_loader = ChoiceLoader([FileSystemLoader(directory) for directory in template_dirs])
 
-device_config = Config()
 display_manager = DisplayManager(device_config)
 wifi_manager = WifiManager()
 refresh_task = RefreshTask(device_config, display_manager, wifi_manager)

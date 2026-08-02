@@ -55,6 +55,17 @@ def user_root(tmp_path):
             del sys.modules[name]
 
 
+def _loader_for(plugin_dir):
+    """A Jinja loader covering the user root the way dashpi.py covers both."""
+    from jinja2 import ChoiceLoader, FileSystemLoader
+    from utils.app_utils import resolve_path
+
+    return ChoiceLoader([
+        FileSystemLoader(resolve_path("plugins")),
+        FileSystemLoader(str(plugin_dir.parent)),
+    ])
+
+
 def _config_entry(plugin_dir):
     return {
         "id": "mini_weather",
@@ -101,6 +112,60 @@ class TestLoadingFromTheUserRoot:
         plugin_registry.load_plugins([entry])
 
         assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
+
+
+class TestSettingsTemplateIsReachable:
+    """Naming the right template is not enough — Jinja has to be able to load it.
+
+    Before plugin_dir existed, a user plugin failed the is_file() check on its
+    own settings.html and silently fell back to base_plugin/settings.html,
+    which the search path could find. Reporting the correct name turned that
+    quiet wrong-form into TemplateNotFound, i.e. a 500 on the settings page.
+    """
+
+    def _env(self, mock_device_config, user_root):
+        """The search path exactly as dashpi.py builds it."""
+        from jinja2 import ChoiceLoader, Environment, FileSystemLoader
+        from plugins.plugin_registry import plugin_template_roots
+        from utils.app_utils import resolve_path
+
+        mock_device_config.builtin_plugins_dir = resolve_path("plugins")
+        mock_device_config.user_plugins_dir = str(user_root.parent)
+
+        directories = [resolve_path("templates"), *plugin_template_roots(mock_device_config)]
+        return Environment(loader=ChoiceLoader([FileSystemLoader(d) for d in directories]))
+
+    def test_a_user_plugin_settings_template_can_be_loaded(self, user_root, mock_device_config):
+        from plugins.base_plugin.base_plugin import BasePlugin
+
+        name = BasePlugin(_config_entry(user_root)).generate_settings_template()["settings_template"]
+        env = self._env(mock_device_config, user_root)
+
+        assert name == "mini_weather/settings.html"
+        assert env.get_template(name).render() == "<p>mini weather settings</p>"
+
+    def test_a_builtin_settings_template_still_loads(self, user_root, mock_device_config):
+        env = self._env(mock_device_config, user_root)
+
+        assert env.get_template("clock/settings.html") is not None
+
+    def test_the_user_root_is_searched_even_before_it_exists(self, tmp_path, mock_device_config):
+        """A fresh system has no user root until the first install."""
+        from plugins.plugin_registry import plugin_template_roots
+
+        mock_device_config.builtin_plugins_dir = "/src/plugins"
+        mock_device_config.user_plugins_dir = str(tmp_path / "never_created")
+
+        roots = plugin_template_roots(mock_device_config)
+
+        assert roots == ["/src/plugins", str(tmp_path / "never_created")]
+
+    def test_the_builtin_root_is_searched_first(self, user_root, mock_device_config):
+        from plugins.plugin_registry import plugin_template_roots
+
+        roots = plugin_template_roots(mock_device_config)
+
+        assert roots[0] == mock_device_config.builtin_plugins_dir
 
 
 class TestHotReload:
@@ -179,6 +244,25 @@ MiniWeather.get_blueprint = lambda self: _bp()
 
         assert result["restart_required"] is True
         assert "mini_weather" in result["restart_reason"]
+
+    def test_an_updated_settings_template_is_re_read(self, user_root, mock_device_config):
+        """Jinja caches compiled templates, and auto_reload is off in production."""
+        from flask import Flask
+        from plugins import plugin_registry
+
+        app = Flask(__name__)
+        app.jinja_env.auto_reload = False
+        app.jinja_loader = _loader_for(user_root)
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+
+        with app.app_context():
+            first = app.jinja_env.get_template("mini_weather/settings.html").render()
+            (user_root / "settings.html").write_text("<p>updated</p>")
+            plugin_registry.reload_user_plugins(config, app)
+            second = app.jinja_env.get_template("mini_weather/settings.html").render()
+
+        assert first == "<p>mini weather settings</p>"
+        assert second == "<p>updated</p>"
 
     def test_a_broken_plugin_does_not_abort_the_reload(self, user_root, mock_device_config):
         from plugins import plugin_registry

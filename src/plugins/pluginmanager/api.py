@@ -53,7 +53,7 @@ def _reload_into_running_app(job, app):
 
     try:
         with app.app_context():
-            result = reload_user_plugins(app.config["DEVICE_CONFIG"])
+            result = reload_user_plugins(app.config["DEVICE_CONFIG"], app)
     except Exception as exc:
         with job["lock"]:
             job["lines"].append(f"[RESTART-REQUIRED] Could not reload plugins: {exc}")

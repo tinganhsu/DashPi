@@ -6,6 +6,7 @@ All notable changes to DashPi are documented here.
 
 ### Added
 - **Third-party plugin root**: Plugins installed with `dashpi plugin install` now live in `<project_root>/plugins` instead of `src/plugins`, so they are no longer untracked directories inside the tracked source tree. The location is overridable with `DASHPI_PLUGINS_DIR`, and the web UI passes it to the CLI so the installer and plugin discovery cannot disagree. Built-in plugins always win an id collision, and `dashpi plugin uninstall` can no longer reach — and delete — a built-in.
+- **Plugin templates from both roots**: The Jinja search path now covers the user plugin root as well as `src/plugins`, so a third-party plugin's own `settings.html` is found instead of raising `TemplateNotFound`. The reload also clears the template cache, so an updated `settings.html` is re-read rather than rendering from the copy compiled before the update.
 - **Plugin hot reload**: Installing, updating, or uninstalling a plugin from the web UI now takes effect in the running server instead of restarting the service. The reload's verdict is streamed into the existing job output. A plugin that registers its own Flask routes still needs a restart, because Flask refuses `register_blueprint()` after the first request has been served, and the output says so explicitly.
 
 ### Changed
