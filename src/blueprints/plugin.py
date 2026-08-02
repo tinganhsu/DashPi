@@ -87,15 +87,15 @@ def image(plugin_id, filename):
     plugins_dir = resolve_path("plugins")
 
     # Construct the full path to the plugin's file
-    plugin_dir = os.path.join(plugins_dir, plugin_id)
+    abs_plugin_dir = os.path.abspath(os.path.join(plugins_dir, plugin_id))
 
-    # Security check to prevent directory traversal
-    safe_path = os.path.abspath(os.path.join(plugin_dir, filename))
-    if not safe_path.startswith(os.path.abspath(plugins_dir)):
+    # Security check to prevent directory traversal. The comparison needs the
+    # trailing separator, or a sibling directory whose name merely starts with
+    # the same prefix reads as being inside it — with the check against the
+    # plugins root, ../../plugins_backup/x passed from any plugin id.
+    safe_path = os.path.abspath(os.path.join(abs_plugin_dir, filename))
+    if not safe_path.startswith(abs_plugin_dir + os.sep):
         return "Invalid path", 403
-
-    # Convert to absolute path for send_from_directory
-    abs_plugin_dir = os.path.abspath(plugin_dir)
 
     # Check if the directory and file exist
     if not os.path.isdir(abs_plugin_dir):

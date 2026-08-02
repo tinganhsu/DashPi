@@ -6,6 +6,7 @@ All notable changes to DashPi are documented here.
 
 ### Fixed
 - **Image Upload reconciliation**: `_reconcile_with_disk()` now drops listed files that no longer exist, instead of only adding unlisted ones. A single vanished path used to stay in the settings list forever and raise on every render, recoverable only by editing `config.json` by hand. The prune stays behind the existing check on the saved-images directory, so a temporarily absent mount is not read as "the user deleted everything".
+- **Plugin asset route**: The directory-traversal guard in `/images/<plugin_id>/<filename>` compared paths without a trailing separator, so a sibling directory sharing the plugins-root prefix (`plugins_backup`) counted as being inside it. `send_from_directory` still refused to serve the file, so nothing leaked, but the request got a confusing 404 instead of the 403 the guard exists to return. The check is now scoped to the requesting plugin's own directory.
 
 ## [2.2.4] — 2026-05-18
 

@@ -209,6 +209,48 @@ class TestPluginBlueprint:
         resp = client.get("/plugin/nonexistent_plugin_xyz")
         assert resp.status_code == 404
 
+    def _plugins_root(self, tmp_path):
+        """Build a plugins root with a sibling directory sharing its prefix."""
+        plugins = tmp_path / "plugins"
+        (plugins / "clock").mkdir(parents=True)
+        (plugins / "clock" / "icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        sibling = tmp_path / "plugins_backup"
+        sibling.mkdir()
+        (sibling / "secret.txt").write_text("not yours")
+        return plugins
+
+    def test_plugin_image_served(self, flask_app, tmp_path):
+        from blueprints import plugin as plugin_bp_module
+
+        plugins = self._plugins_root(tmp_path)
+        with patch.object(plugin_bp_module, "resolve_path", return_value=str(plugins)):
+            with flask_app.test_request_context():
+                resp = plugin_bp_module.image("clock", "icon.png")
+        assert resp.status_code == 200
+
+    def test_plugin_image_rejects_traversal_to_prefix_sibling(self, flask_app, tmp_path):
+        """A sibling dir whose name starts with the plugins root is still outside it."""
+        from blueprints import plugin as plugin_bp_module
+
+        plugins = self._plugins_root(tmp_path)
+        with patch.object(plugin_bp_module, "resolve_path", return_value=str(plugins)):
+            with flask_app.test_request_context():
+                body, status = plugin_bp_module.image(
+                    "clock", "../../plugins_backup/secret.txt"
+                )
+        assert status == 403
+
+    def test_plugin_image_rejects_escaping_the_plugin_dir(self, flask_app, tmp_path):
+        from blueprints import plugin as plugin_bp_module
+
+        plugins = self._plugins_root(tmp_path)
+        (plugins / "other").mkdir()
+        (plugins / "other" / "private.txt").write_text("not yours either")
+        with patch.object(plugin_bp_module, "resolve_path", return_value=str(plugins)):
+            with flask_app.test_request_context():
+                body, status = plugin_bp_module.image("clock", "../other/private.txt")
+        assert status == 403
+
     def test_stocks_get_settings(self, client):
         resp = client.get("/plugin/stocks/settings")
         assert resp.status_code == 200
