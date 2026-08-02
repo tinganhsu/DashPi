@@ -83,11 +83,14 @@ def plugin_page(plugin_id):
 @plugin_bp.route('/images/<plugin_id>/<path:filename>')
 def image(plugin_id, filename):
     """Serve static files from a plugin's directory (icons, images, etc.)."""
-    # Resolve plugins directory dynamically
-    plugins_dir = resolve_path("plugins")
-
-    # Construct the full path to the plugin's file
-    abs_plugin_dir = os.path.abspath(os.path.join(plugins_dir, plugin_id))
+    # A plugin lives under either the built-in root or the user one, and only
+    # the config knows which, so ask it instead of assuming built-in. The base
+    # plugin carries no plugin-info.json and is therefore absent from the list,
+    # yet plugin.html asks this route for its frame images — hence the fallback.
+    device_config = current_app.config['DEVICE_CONFIG']
+    plugin_config = device_config.get_plugin(plugin_id) or {}
+    plugin_dir = plugin_config.get("plugin_dir") or os.path.join(resolve_path("plugins"), plugin_id)
+    abs_plugin_dir = os.path.abspath(plugin_dir)
 
     # Security check to prevent directory traversal. The comparison needs the
     # trailing separator, or a sibling directory whose name merely starts with

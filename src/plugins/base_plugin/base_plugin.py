@@ -85,7 +85,13 @@ class BasePlugin:
         return self.config.get("id")
 
     def get_plugin_dir(self, path=None):
-        plugin_dir = os.path.join(PLUGINS_DIR, self.get_plugin_id())
+        # A plugin lives under either the built-in root or the user one, and
+        # only its config knows which. Without this, every plugin in the user
+        # root resolves to a path that does not exist, so its own settings.html
+        # is never found and the generic form is silently shown instead.
+        plugin_dir = self.config.get("plugin_dir") or os.path.join(
+            PLUGINS_DIR, self.get_plugin_id()
+        )
         if path:
             plugin_dir = os.path.join(plugin_dir, path)
         return plugin_dir

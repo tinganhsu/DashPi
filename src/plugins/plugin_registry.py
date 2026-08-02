@@ -10,6 +10,26 @@ logger = logging.getLogger(__name__)
 PLUGINS_DIR = 'plugins'
 PLUGIN_CLASSES = {}
 
+def _ensure_importable(plugin_dir):
+    """Make ``plugins.<id>`` resolvable for a plugin outside the built-in root.
+
+    ``plugins`` is a regular package, so a second root has to be spliced onto
+    its ``__path__``; putting the directory on sys.path would not do it. The
+    built-in root stays first, so a user plugin can never win the import even
+    if discovery somehow let a duplicate id through.
+
+    A plugin directory has no ``__init__.py`` and therefore resolves as a
+    namespace package, which is also what makes a plugin's own relative imports
+    (``from .constants import ...``) work.
+    """
+    import plugins
+
+    parent = str(Path(plugin_dir).parent)
+    if parent not in plugins.__path__:
+        plugins.__path__.append(parent)
+        logger.info(f"Added plugin root {parent}")
+
+
 def load_plugins(plugins_config):
     plugins_module_path = Path(resolve_path(PLUGINS_DIR))
     for plugin in plugins_config:
@@ -18,7 +38,9 @@ def load_plugins(plugins_config):
             logger.info(f"Plugin {plugin_id} is disabled, skipping.")
             continue
 
-        plugin_dir = plugins_module_path / plugin_id
+        # Config records where each plugin was found. The fallback keeps a
+        # hand-built config (tests, callers predating the second root) working.
+        plugin_dir = Path(plugin.get("plugin_dir") or plugins_module_path / plugin_id)
         if not plugin_dir.is_dir():
             logger.error(f"Could not find plugin directory {plugin_dir} for '{plugin_id}', skipping.")
             continue
@@ -27,6 +49,8 @@ def load_plugins(plugins_config):
         if not module_path.is_file():
             logger.error(f"Could not find module path {module_path} for '{plugin_id}', skipping.")
             continue
+
+        _ensure_importable(plugin_dir)
 
         module_name = f"plugins.{plugin_id}.{plugin_id}"
         try:
