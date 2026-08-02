@@ -37,34 +37,48 @@ def register_plugin_blueprints(app):
 '''
 
 
-def _project_dir():
-    """Return project root, the parent directory of src/."""
+def _core_dir():
+    """Return the directory that holds ``plugins/`` — ``src/`` in a checkout.
+
+    This file always sits at ``<core>/plugins/ai_photo_stylist/patch_core.py``,
+    so walking up from it is exact and does not depend on what the tree above
+    is called. A fork that vendors the source under another name therefore
+    resolves correctly without patching this module.
+    """
     env_project_dir = os.environ.get("PROJECT_DIR")
     if env_project_dir:
-        return Path(env_project_dir).resolve()
+        return Path(env_project_dir).resolve() / "src"
 
     try:
         from config import Config
 
-        return Path(Config.BASE_DIR).resolve().parent
+        return Path(Config.BASE_DIR).resolve()
     except ImportError:
-        return Path(__file__).resolve().parents[3]
+        return Path(__file__).resolve().parents[2]
 
 
-def _entrypoint_path(project_dir):
+def _registry_path(core_dir):
+    return core_dir / "plugins" / "plugin_registry.py"
+
+
+def _entrypoint_path(core_dir):
     for filename in ("dashpi.py", "inkypi.py"):
-        candidate = project_dir / "src" / filename
+        candidate = core_dir / filename
         if candidate.is_file():
             return candidate
-    return project_dir / "src" / "dashpi.py"
+    # A fork may keep the entrypoint beside the core tree rather than in it.
+    candidate = core_dir.parent / "app.py"
+    if candidate.is_file():
+        return candidate
+    return core_dir / "dashpi.py"
 
 
 def check_core_patched():
     """Return (is_patched, missing_parts) for plugin blueprint support."""
-    project_dir = _project_dir()
+    core_dir = _core_dir()
     missing = []
 
-    registry_path = project_dir / "src" / "plugins" / "plugin_registry.py"
+    registry_path = _registry_path(core_dir)
     if registry_path.is_file():
         registry_content = registry_path.read_text(encoding="utf-8")
         if "def register_plugin_blueprints(app):" not in registry_content:
@@ -72,7 +86,7 @@ def check_core_patched():
     else:
         missing.append("plugin_registry.py: file not found")
 
-    entrypoint = _entrypoint_path(project_dir)
+    entrypoint = _entrypoint_path(core_dir)
     if entrypoint.is_file():
         entrypoint_content = entrypoint.read_text(encoding="utf-8")
         if "register_plugin_blueprints(app)" not in entrypoint_content:
@@ -85,9 +99,9 @@ def check_core_patched():
 
 def patch_core_files():
     """Patch core files to support plugin-owned Flask blueprints."""
-    project_dir = _project_dir()
-    registry_path = project_dir / "src" / "plugins" / "plugin_registry.py"
-    entrypoint = _entrypoint_path(project_dir)
+    core_dir = _core_dir()
+    registry_path = _registry_path(core_dir)
+    entrypoint = _entrypoint_path(core_dir)
 
     if not registry_path.is_file():
         return False, f"File not found: {registry_path}"
