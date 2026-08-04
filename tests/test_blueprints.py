@@ -186,6 +186,35 @@ class TestSettingsBlueprint:
         assert saved_settings["image_settings"]["inky_saturation"] == 0.7
         assert saved_settings["image_settings"]["eink_optimization_enabled"] is True
 
+    def test_save_settings_stores_checkboxes_as_booleans(self, client, flask_app):
+        """A checkbox posts "on" or nothing; device.json should hold True/False.
+
+        Every consumer only tests truthiness, so "on" happened to work — but it
+        left a string in the config file, and the same handler already gets
+        this right for einkOptimizationEnabled and the schedule toggles.
+        """
+        cfg = flask_app.config["DEVICE_CONFIG"]
+
+        resp = client.post("/save_settings", data={
+            "deviceName": "TestPi",
+            "orientation": "horizontal",
+            "timezoneName": "US/Central",
+            "timeFormat": "12h",
+            "saturation": "1.0",
+            "brightness": "1.0",
+            "sharpness": "1.0",
+            "contrast": "1.0",
+            "invertImage": "on",
+            "showPluginIcon": "on",
+            # logSystemStats omitted: an unchecked box posts nothing at all.
+        })
+
+        assert resp.status_code == 200
+        saved = cfg.update_config.call_args.args[0]
+        assert saved["inverted_image"] is True
+        assert saved["show_plugin_icon"] is True
+        assert saved["log_system_stats"] is False
+
     def test_save_settings_missing_timezone(self, client):
         resp = client.post("/save_settings", data={
             "timeFormat": "12h",

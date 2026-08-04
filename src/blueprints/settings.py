@@ -115,9 +115,9 @@ def save_settings():
         settings = {
             "device_name": form_data.get("deviceName", "").strip() or None,
             "orientation": form_data.get("orientation"),
-            "inverted_image": form_data.get("invertImage"),
-            "log_system_stats": form_data.get("logSystemStats"),
-            "show_plugin_icon": form_data.get("showPluginIcon"),
+            "inverted_image": "invertImage" in form_data,
+            "log_system_stats": "logSystemStats" in form_data,
+            "show_plugin_icon": "showPluginIcon" in form_data,
             "timezone": form_data.get("timezoneName"),
             "time_format": form_data.get("timeFormat"),
             "image_settings": image_settings,
