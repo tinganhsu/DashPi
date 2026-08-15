@@ -135,6 +135,44 @@ def test_missing_openai_key_raises(plugin, mock_device_config, tmp_path):
         }, mock_device_config)
 
 
+def test_missing_1min_key_raises(plugin, mock_device_config, tmp_path):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = None
+
+    with pytest.raises(RuntimeError, match="1min.ai API Key"):
+        plugin.generate_image({
+            "provider": "1min",
+            "imageFiles[]": [str(img_path)],
+        }, mock_device_config)
+
+
+def test_generate_image_uses_1min_provider(plugin, mock_device_config):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = "one-min-key"
+    plugin._generate_with_1min = MagicMock(return_value=Image.new("RGB", (1024, 640), "blue"))
+    plugin._generate_with_gemini = MagicMock()
+    plugin._generate_with_openai = MagicMock()
+
+    img = plugin.generate_image({
+        "provider": "1min",
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "oneMinImageModel": "grok-2-image-1212",
+        "fitMode": "fit",
+    }, mock_device_config)
+
+    assert_valid_image(img, (800, 480))
+    mock_device_config.load_env_key.assert_called_with("ONE_MIN_AI_API_KEY")
+    plugin._generate_with_1min.assert_called_once()
+    args = plugin._generate_with_1min.call_args.args
+    assert args[0] == "one-min-key"
+    assert args[1] == "grok-2-image-1212"
+    plugin._generate_with_gemini.assert_not_called()
+    plugin._generate_with_openai.assert_not_called()
+
+
 def test_generate_image_caches_success(plugin, mock_device_config):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -650,3 +688,99 @@ def test_delete_upload_image_removes_thumbnail(client, monkeypatch, mock_device_
     assert resp.status_code == 200
     assert not upload_file.exists()
     assert not thumb_file.exists()
+
+
+def test_extract_1min_image_url():
+    from plugins.ai_photo_stylist.ai_photo_stylist import _extract_1min_image_url
+
+    # 1. temporaryUrl
+    assert _extract_1min_image_url({"aiRecord": {"temporaryUrl": "https://example.com/temp.png"}}) == "https://example.com/temp.png"
+
+    # 2. full url in resultObject list
+    payload_list_full = {
+        "aiRecord": {
+            "aiRecordDetail": {
+                "resultObject": ["https://cdn.example.com/image.png"]
+            }
+        }
+    }
+    assert _extract_1min_image_url(payload_list_full) == "https://cdn.example.com/image.png"
+
+    # 3. relative path in resultObject list
+    payload_list_rel = {
+        "aiRecord": {
+            "aiRecordDetail": {
+                "resultObject": ["generated/output_123.png"]
+            }
+        }
+    }
+    assert _extract_1min_image_url(payload_list_rel) == "https://asset.1min.ai/generated/output_123.png"
+
+    # 4. relative path as string
+    payload_str_rel = {
+        "aiRecord": {
+            "aiRecordDetail": {
+                "resultObject": "generated/output_456.png"
+            }
+        }
+    }
+    assert _extract_1min_image_url(payload_str_rel) == "https://asset.1min.ai/generated/output_456.png"
+
+
+def test_generate_with_1min_payload_and_download(plugin, monkeypatch):
+    import requests
+
+    called_payload = {}
+    mock_img_bytes = BytesIO()
+    Image.new("RGB", (1536, 1024), "purple").save(mock_img_bytes, format="PNG")
+    mock_img_bytes.seek(0)
+
+    class MockPostResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "aiRecord": {
+                    "temporaryUrl": "https://asset.1min.ai/test_img.png"
+                }
+            }
+
+    class MockGetResponse:
+        content = mock_img_bytes.getvalue()
+
+        def raise_for_status(self):
+            pass
+
+    def mock_post(url, headers=None, json=None, timeout=None):
+        nonlocal called_payload
+        called_payload = json
+        return MockPostResponse()
+
+    def mock_get(url, timeout=None):
+        return MockGetResponse()
+
+    monkeypatch.setattr(requests, "post", mock_post)
+    monkeypatch.setattr(requests, "get", mock_get)
+
+    # 1. Test Gemini preview model
+    img = plugin._generate_with_1min("test-key", "gemini-3.1-flash-image-preview", "sample prompt", (800, 480))
+    assert_valid_image(img)
+    assert called_payload["type"] == "IMAGE_GENERATOR"
+    assert called_payload["model"] == "gemini-3.1-flash-image-preview"
+    assert called_payload["promptObject"]["aspectRatio"] == "3:2"
+    assert called_payload["promptObject"]["imageSize"] == "2K"
+
+    # 2. Test Grok-2 model with vertical dimensions
+    img_v = plugin._generate_with_1min("test-key", "grok-2-image-1212", "sample prompt", (480, 800))
+    assert_valid_image(img_v)
+    assert called_payload["model"] == "grok-2-image-1212"
+    assert called_payload["promptObject"]["size"] == "768x1024"
+
+    # 3. Test GPT-image model with horizontal dimensions
+    img_gpt = plugin._generate_with_1min("test-key", "gpt-image-1", "sample prompt", (800, 480))
+    assert_valid_image(img_gpt)
+    assert called_payload["model"] == "gpt-image-1"
+    assert called_payload["promptObject"]["size"] == "1536x1024"
+    assert called_payload["promptObject"]["quality"] == "medium"
+

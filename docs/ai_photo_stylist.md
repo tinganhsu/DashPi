@@ -13,19 +13,21 @@ AI Photo Stylist is a built-in DashPi plugin that restyles your own photos with 
 - Save generated results to a local cache.
 - If Gemini returns an API error later, show a random cached result instead of failing the display update.
 
-## Required API Key
+## Supported AI Providers & API Keys
 
-Add your Gemini API key in **Settings > API Keys**:
+Configure your API key in **Settings > API Keys** depending on the provider you select:
 
-```text
-GOOGLE_GEMINI_SECRET
-```
+1. **1min.ai** (Multi-model aggregator):
+   - Key: `ONE_MIN_AI_API_KEY`
+   - Models: `gpt-image-1`, `gpt-image-1-mini`, `gpt-image-2`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `gemini-2-5-flash-image`, `grok-2-image-1212`
 
-The plugin uses Gemini native image models:
+2. **Google Gemini** (Direct):
+   - Key: `GOOGLE_GEMINI_SECRET`
+   - Models: `gemini-3.1-flash-image`, `gemini-3-pro-image`
 
-- `gemini-2.5-flash-image`
-- `gemini-3-pro-image-preview`
-- `gemini-3.1-flash-image-preview`
+3. **OpenAI** (Direct):
+   - Key: `OPEN_AI_SECRET`
+   - Models: `gpt-image-2`, `gpt-image-1`
 
 ## File Locations
 

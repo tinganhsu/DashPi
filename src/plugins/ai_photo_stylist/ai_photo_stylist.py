@@ -19,6 +19,89 @@ import time
 
 logger = logging.getLogger(__name__)
 
+ONE_MIN_FEATURES_URL = "https://api.1min.ai/api/features"
+ONE_MIN_ASSET_BASE_URL = "https://asset.1min.ai"
+ONE_MIN_IMAGE_MODELS = {
+    "gpt-image-1": "GPT Image 1 (1min.ai)",
+    "gpt-image-1-mini": "GPT Image 1 Mini (1min.ai)",
+    "gpt-image-2": "GPT Image 2 (1min.ai)",
+    "gemini-3.1-flash-image-preview": "Gemini 3.1 Flash Image Preview (1min.ai)",
+    "gemini-3-pro-image-preview": "Gemini 3 Pro Image Preview (1min.ai)",
+    "gemini-2-5-flash-image": "Gemini 2.5 Flash Image (1min.ai)",
+    "grok-2-image-1212": "Grok-2 Image (1min.ai)",
+}
+DEFAULT_ONE_MIN_MODEL = "gpt-image-1"
+ONE_MIN_MODEL_ALIASES = {
+    "grok-2-image": "grok-2-image-1212",
+    "grok-2": "grok-2-image-1212",
+    "gemini-3-pro": "gemini-3-pro-image-preview",
+    "gemini-3.1-flash": "gemini-3.1-flash-image-preview",
+    "gemini-2.5-flash": "gemini-2-5-flash-image",
+}
+
+
+def _has_key(v) -> bool:
+    return bool(v and str(v).strip())
+
+
+def _load_1min_api_key(device_config=None) -> str:
+    key_names = ("ONE_MIN_AI_API_KEY", "ONE_MIN_API_KEY", "ONEMIN_API_KEY", "1MIN_API_KEY")
+    if device_config and hasattr(device_config, "load_env_key"):
+        for key_name in key_names:
+            value = device_config.load_env_key(key_name)
+            if _has_key(value):
+                return str(value).strip()
+    for key_name in key_names:
+        value = os.getenv(key_name)
+        if _has_key(value):
+            return str(value).strip()
+    return ""
+
+
+def _one_min_headers(api_key: str) -> dict:
+    return {
+        "Content-Type": "application/json",
+        "API-KEY": api_key,
+    }
+
+
+def _extract_1min_image_url(payload: dict) -> str:
+    record = payload.get("aiRecord") or {}
+    temporary_url = (record.get("temporaryUrl") or "").strip()
+    if temporary_url:
+        return temporary_url
+    detail = record.get("aiRecordDetail") or {}
+    result = detail.get("resultObject")
+    if isinstance(result, list) and result:
+        first = str(result[0] or "").strip()
+        if first.startswith(("http://", "https://")):
+            return first
+        if first:
+            return f"{ONE_MIN_ASSET_BASE_URL}/{first.lstrip('/')}"
+    elif isinstance(result, str) and result.strip():
+        first = result.strip()
+        if first.startswith(("http://", "https://")):
+            return first
+        if first:
+            return f"{ONE_MIN_ASSET_BASE_URL}/{first.lstrip('/')}"
+    return ""
+
+
+def _raise_for_1min_status(resp, action: str) -> None:
+    try:
+        resp.raise_for_status()
+    except Exception as e:
+        detail = ""
+        try:
+            body = resp.json()
+            detail = json.dumps(body, ensure_ascii=False)
+        except Exception:
+            detail = (getattr(resp, "text", "") or "").strip()
+        if detail:
+            raise RuntimeError(f"{action}: {e}; response: {detail}") from e
+        raise RuntimeError(f"{action}: {e}") from e
+
+
 GEMINI_IMAGE_MODELS = [
     "gemini-3.1-flash-image",
     "gemini-3-pro-image",
@@ -90,12 +173,16 @@ class AIPhotoStylist(BasePlugin):
         template_params = super().generate_settings_template()
         template_params["api_key"] = {
             "required": True,
-            "service": "OpenAI or Google Gemini",
-            "expected_key": "OPEN_AI_SECRET or GOOGLE_GEMINI_SECRET",
+            "service": "1min.ai, OpenAI, or Google Gemini",
+            "expected_key": "ONE_MIN_AI_API_KEY, OPEN_AI_SECRET, or GOOGLE_GEMINI_SECRET",
         }
         template_params["available_images"] = self._get_available_images()
         template_params["cached_images"] = self._get_cached_images()
         template_params["cached_image_count"] = len(template_params["cached_images"])
+        template_params["one_min_models"] = [
+            {"id": model_id, "label": label}
+            for model_id, label in ONE_MIN_IMAGE_MODELS.items()
+        ]
         template_params.update(self._get_core_patch_template_params())
 
         try:
@@ -153,7 +240,13 @@ class AIPhotoStylist(BasePlugin):
         provider = settings.get("provider", "gemini")
 
         try:
-            if provider == "openai":
+            if provider in ("1min", "1min.ai"):
+                api_key = _load_1min_api_key(device_config)
+                if not api_key:
+                    raise RuntimeError("1min.ai API Key not configured. Add ONE_MIN_AI_API_KEY in Settings > API Keys.")
+                model = settings.get("oneMinImageModel", DEFAULT_ONE_MIN_MODEL)
+                generated = self._generate_with_1min(api_key, model, final_prompt, dimensions)
+            elif provider == "openai":
                 api_key = device_config.load_env_key("OPEN_AI_SECRET")
                 if not api_key:
                     raise RuntimeError("OpenAI API Key not configured. Add OPEN_AI_SECRET in Settings > API Keys.")
@@ -583,6 +676,91 @@ class AIPhotoStylist(BasePlugin):
             return image
 
         raise RuntimeError("Gemini returned no image in response.")
+
+    def _generate_with_1min(self, api_key: str, model: str, prompt: str, dimensions: tuple[int, int]) -> Image.Image:
+        import requests
+
+        api_key = (api_key or "").encode("ascii", errors="ignore").decode("ascii").strip()
+        model = ONE_MIN_MODEL_ALIASES.get(model, model)
+        if model not in ONE_MIN_IMAGE_MODELS:
+            logger.warning(f"Unknown 1min.ai model '{model}', falling back to {DEFAULT_ONE_MIN_MODEL}")
+            model = DEFAULT_ONE_MIN_MODEL
+
+        w, h = dimensions
+        is_horizontal = (w >= h)
+        aspect_ratio = "3:2" if is_horizontal else "2:3"
+        size = "1536x1024" if is_horizontal else "1024x1536"
+
+        if model == "gemini-3.1-flash-image-preview":
+            prompt_object = {
+                "prompt": prompt,
+                "imageSize": "2K",
+                "aspectRatio": aspect_ratio,
+                "temperature": 1.0,
+                "topP": 0.95,
+            }
+        elif model == "gemini-3-pro-image-preview":
+            prompt_object = {
+                "prompt": prompt,
+                "imageSize": "2K",
+                "temperature": 1.0,
+                "topP": 0.95,
+            }
+        elif model == "gemini-2-5-flash-image":
+            prompt_object = {
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+            }
+        elif model in ("grok-2-image-1212", "grok-2-image"):
+            grok_size = "1024x768" if is_horizontal else "768x1024"
+            prompt_object = {
+                "prompt": prompt,
+                "n": 1,
+                "size": grok_size,
+            }
+        else:
+            # gpt-image-1, gpt-image-1-mini, gpt-image-2, etc.
+            prompt_object = {
+                "prompt": prompt,
+                "n": 1,
+                "size": size,
+                "quality": "medium",
+                "output_format": "png",
+            }
+
+        logger.info(
+            f"Generating 1min.ai image: model={model}, size/ratio="
+            f"{prompt_object.get('size') or prompt_object.get('aspectRatio') or prompt_object.get('aspect_ratio')}"
+        )
+
+        try:
+            resp = requests.post(
+                ONE_MIN_FEATURES_URL,
+                headers=_one_min_headers(api_key),
+                json={
+                    "type": "IMAGE_GENERATOR",
+                    "model": model,
+                    "promptObject": prompt_object,
+                },
+                timeout=(10, 180),
+            )
+            _raise_for_1min_status(resp, "1min.ai image request failed")
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            raise RuntimeError(f"1min.ai image generation request failed: {e}") from e
+
+        image_url = _extract_1min_image_url(resp.json())
+        if not image_url:
+            raise RuntimeError("1min.ai returned no usable image URL.")
+
+        try:
+            r = requests.get(image_url, timeout=(10, 60))
+            r.raise_for_status()
+            image = Image.open(BytesIO(r.content)).convert("RGB")
+            return image
+        except Exception as e:
+            raise RuntimeError(f"Failed to download image from 1min.ai ({image_url}): {e}") from e
 
     def _generate_with_openai(self, api_key, model, image_path, prompt, dimensions, quality):
         try:
