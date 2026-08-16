@@ -784,3 +784,78 @@ def test_generate_with_1min_payload_and_download(plugin, monkeypatch):
     assert called_payload["promptObject"]["size"] == "1536x1024"
     assert called_payload["promptObject"]["quality"] == "medium"
 
+
+
+class _FakeGeminiError(Exception):
+    """Stands in for google-genai's APIError, which carries the HTTP status on .code."""
+
+    def __init__(self, code, message="boom"):
+        super().__init__(f"{code} {message}")
+        self.code = code
+
+
+def test_gemini_retries_transient_server_errors(monkeypatch):
+    from plugins.ai_photo_stylist import ai_photo_stylist as mod
+
+    slept = []
+    monkeypatch.setattr(mod.time, "sleep", lambda s: slept.append(s))
+    attempts = []
+
+    def create():
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 3:
+            raise _FakeGeminiError(504, "Gateway Timeout")
+        return "interaction"
+
+    assert mod._call_gemini_with_retry(create) == "interaction"
+    assert len(attempts) == 3
+    assert slept == list(mod.GEMINI_RETRY_BACKOFF_SECONDS)
+
+
+def test_gemini_gives_up_after_max_attempts(monkeypatch):
+    from plugins.ai_photo_stylist import ai_photo_stylist as mod
+
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    attempts = []
+
+    def create():
+        attempts.append(1)
+        raise _FakeGeminiError(504, "Gateway Timeout")
+
+    with pytest.raises(_FakeGeminiError):
+        mod._call_gemini_with_retry(create)
+    assert len(attempts) == mod.GEMINI_MAX_ATTEMPTS
+
+
+def test_gemini_does_not_retry_client_errors(monkeypatch):
+    from plugins.ai_photo_stylist import ai_photo_stylist as mod
+
+    monkeypatch.setattr(mod.time, "sleep", lambda s: pytest.fail("must not back off on 4xx"))
+    attempts = []
+
+    def create():
+        attempts.append(1)
+        raise _FakeGeminiError(400, "invalid_request")
+
+    with pytest.raises(_FakeGeminiError):
+        mod._call_gemini_with_retry(create)
+    assert len(attempts) == 1
+
+
+def test_gemini_retries_sdk_server_error_without_status_code(monkeypatch):
+    from plugins.ai_photo_stylist import ai_photo_stylist as mod
+
+    class ServerError(Exception):
+        pass
+
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    attempts = []
+
+    def create():
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise ServerError("upstream unavailable")
+        return "interaction"
+
+    assert mod._call_gemini_with_retry(create) == "interaction"
+    assert len(attempts) == 2

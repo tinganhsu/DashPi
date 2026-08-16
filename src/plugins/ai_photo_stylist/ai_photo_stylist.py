@@ -114,6 +114,9 @@ LEGACY_GEMINI_MODEL_MAP = {
     "gemini-3-pro-image-preview": "gemini-3-pro-image",
 }
 GEMINI_INTERACTION_TIMEOUT_SECONDS = 300
+GEMINI_RETRY_STATUS_CODES = (500, 502, 503, 504)
+GEMINI_RETRY_BACKOFF_SECONDS = (5, 15)
+GEMINI_MAX_ATTEMPTS = len(GEMINI_RETRY_BACKOFF_SECONDS) + 1
 OPENAI_IMAGE_MODELS = ["gpt-image-2", "gpt-image-1"]
 DEFAULT_OPENAI_MODEL = "gpt-image-2"
 OPENAI_IMAGE_QUALITIES = {"auto", "low", "medium", "high"}
@@ -157,6 +160,38 @@ DEFAULT_PROMPT_TEMPLATE = {
         ),
     ]
 }
+
+
+def _gemini_status_code(exc):
+    """Best-effort HTTP status code out of a google-genai exception."""
+    for attr in ("code", "status_code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    value = getattr(getattr(exc, "response", None), "status_code", None)
+    return value if isinstance(value, int) else None
+
+
+def _is_retryable_gemini_error(exc) -> bool:
+    """Only transient server-side failures are worth another call; 4xx are deterministic."""
+    if _gemini_status_code(exc) in GEMINI_RETRY_STATUS_CODES:
+        return True
+    return any(cls.__name__ == "ServerError" for cls in type(exc).__mro__)
+
+
+def _call_gemini_with_retry(create_interaction):
+    for attempt in range(1, GEMINI_MAX_ATTEMPTS + 1):
+        try:
+            return create_interaction()
+        except Exception as exc:
+            if attempt >= GEMINI_MAX_ATTEMPTS or not _is_retryable_gemini_error(exc):
+                raise
+            delay = GEMINI_RETRY_BACKOFF_SECONDS[attempt - 1]
+            logger.warning(
+                f"Gemini transient error on attempt {attempt}/{GEMINI_MAX_ATTEMPTS}, "
+                f"retrying in {delay}s: {exc}"
+            )
+            time.sleep(delay)
 
 
 class AIPhotoStylist(BasePlugin):
@@ -651,14 +686,17 @@ class AIPhotoStylist(BasePlugin):
 
         # 影像模型不支援 background interaction（400 invalid_request），
         # 只能同步呼叫並拉長 HTTP timeout 等待生成完成。
-        interaction = client.interactions.create(
-            model=model,
-            input=[
-                {"type": "text", "text": prompt},
-                {"type": "image", "data": source_b64, "mime_type": "image/png"},
-            ],
-            response_format={"type": "image", "aspect_ratio": aspect_ratio},
-            timeout=GEMINI_INTERACTION_TIMEOUT_SECONDS,
+        # 生成太久時 Google 的 gateway 會先回 504，屬暫時性錯誤，退避重試。
+        interaction = _call_gemini_with_retry(
+            lambda: client.interactions.create(
+                model=model,
+                input=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image", "data": source_b64, "mime_type": "image/png"},
+                ],
+                response_format={"type": "image", "aspect_ratio": aspect_ratio},
+                timeout=GEMINI_INTERACTION_TIMEOUT_SECONDS,
+            )
         )
 
         status = getattr(interaction, "status", None)
