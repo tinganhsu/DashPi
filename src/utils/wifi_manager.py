@@ -131,9 +131,21 @@ class WifiManager:
             output = subprocess.check_output(
                 ["iwgetid", "-r"], text=True, timeout=5
             ).strip()
-            return output or None
+            if output:
+                return output
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+        # Fallback: wpa_cli (e.g. DietPi has wpa_supplicant but no wireless-tools)
+        success, output = _run_wpa_cli(["-i", "wlan0", "status"])
+        if not success:
             return None
+        status = dict(
+            line.split("=", 1) for line in output.splitlines() if "=" in line
+        )
+        if status.get("wpa_state") != "COMPLETED":
+            return None
+        return status.get("ssid") or None
 
     def get_ip_address(self):
         """Get the device's LAN IP address, or None if unavailable."""
