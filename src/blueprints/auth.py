@@ -1,10 +1,30 @@
 """Authentication blueprint — handle login, logout, and initial password setup."""
 
 import logging
+from urllib.parse import urlsplit
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, session, current_app
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
+
+
+def _safe_next_url(target):
+    """Return ``target`` only if it leads back into this app, else the dashboard.
+
+    The access-control gate sends the absolute request URL, so a same-host
+    absolute URL is accepted alongside a plain path. Browsers read a
+    backslash as a slash and drop tabs and newlines, so those are refused
+    rather than letting "/\\evil" or a slash-tab-slash become "//evil".
+    """
+    fallback = url_for('main.main_page')
+    if not target or '\\' in target or any(ord(c) < 0x21 for c in target):
+        return fallback
+    parts = urlsplit(target)
+    if not parts.scheme and not parts.netloc:
+        return target if target.startswith('/') and not target.startswith('//') else fallback
+    if parts.scheme in ('http', 'https') and parts.netloc == request.host:
+        return target
+    return fallback
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -21,8 +41,7 @@ def login():
             session['authenticated'] = True
             session.permanent = True
             # Redirect to next page or dashboard
-            next_url = request.args.get('next') or url_for('main.main_page')
-            return redirect(next_url)
+            return redirect(_safe_next_url(request.args.get('next')))
         else:
             return render_template('login.html', error="Invalid password")
             
