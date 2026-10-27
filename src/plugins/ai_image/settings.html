@@ -77,7 +77,8 @@
         <select id="imageModel" name="imageModel" class="form-input" onchange="toggleQualityDropdown()">
             <option value="dall-e-2">DALL-E 2</option>
             <option value="dall-e-3" selected>DALL-E 3</option>
-            <option value="gpt-image-1">GPT Image 1</option>
+            <option value="gpt-image-2.5-flare">GPT Image 2.5 Flare</option>
+            <option value="gpt-image-2.5-sunburst">GPT Image 2.5 Sunburst</option>
         </select>
     </div>
 
@@ -184,7 +185,7 @@
         else if (selectedModel === "dall-e-2") {
             qualityDropdown.add(new Option("Standard", "standard"));
         }
-        else if (selectedModel === "gpt-image-1") {
+        else if (selectedModel.startsWith("gpt-image-2.5-")) {
             qualityDropdown.add(new Option("High", "high"));
             qualityDropdown.add(new Option("Medium", "medium"));
             qualityDropdown.add(new Option("Low", "low"));
@@ -212,6 +213,7 @@
 
             provider = pluginSettings.provider || 'gemini';
             imageModel = pluginSettings.imageModel || 'dall-e-3';
+            if (imageModel === 'gpt-image-1') imageModel = 'gpt-image-2.5-flare';
             quality = pluginSettings.quality || 'standard';
             geminiImageModel = pluginSettings.geminiImageModel || 'imagen-4.0-generate-001';
             showTitle = pluginSettings.showTitle !== 'false';

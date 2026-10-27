@@ -285,7 +285,7 @@ def test_generate_image_uses_openai_provider(plugin, mock_device_config):
         "provider": "openai",
         "imageFiles[]": [str(img_path)],
         "vibeId": plugin._load_vibes()[0]["id"],
-        "openaiImageModel": "gpt-image-2",
+        "openaiImageModel": "gpt-image-2",  # legacy id, migrated to Flare
         "openaiImageQuality": "high",
         "fitMode": "fit",
     }, mock_device_config)
@@ -294,7 +294,7 @@ def test_generate_image_uses_openai_provider(plugin, mock_device_config):
     mock_device_config.load_env_key.assert_called_with("OPEN_AI_SECRET")
     plugin._generate_with_openai.assert_called_once()
     args = plugin._generate_with_openai.call_args.args
-    assert args[1] == "gpt-image-2"
+    assert args[1] == "gpt-image-2.5-flare"
     assert args[5] == "high"
     plugin._generate_with_gemini.assert_not_called()
 
@@ -543,11 +543,7 @@ def test_vertical_orientation(plugin, mock_device_config):
 
 
 def test_openai_size_selection(plugin):
-    assert plugin._openai_size_for_model("gpt-image-1", (800, 480)) == "1536x1024"
-    assert plugin._openai_size_for_model("gpt-image-1", (480, 800)) == "1024x1536"
-    assert plugin._openai_size_for_model("gpt-image-1", (700, 700)) == "1024x1024"
-
-    gpt_image_2_size = plugin._openai_size_for_model("gpt-image-2", (800, 480))
+    gpt_image_2_size = plugin._openai_size_for_model("gpt-image-2.5-sunburst", (800, 480))
     width, height = [int(part) for part in gpt_image_2_size.split("x")]
     assert width % 16 == 0
     assert height % 16 == 0
@@ -823,11 +819,15 @@ def test_generate_with_1min_payload_and_download(plugin, monkeypatch):
     assert called_payload["promptObject"]["size"] == "768x1024"
 
     # 3. Test GPT-image model with horizontal dimensions
-    img_gpt = plugin._generate_with_1min("test-key", "gpt-image-1", "sample prompt", (800, 480))
+    img_gpt = plugin._generate_with_1min("test-key", "gpt-image-2.5-sunburst", "sample prompt", (800, 480))
     assert_valid_image(img_gpt)
-    assert called_payload["model"] == "gpt-image-1"
+    assert called_payload["model"] == "gpt-image-2.5-sunburst"
     assert called_payload["promptObject"]["size"] == "1536x1024"
     assert called_payload["promptObject"]["quality"] == "medium"
+
+    # 4. Retired GPT Image 1/2 ids fall back to the default Flare model
+    plugin._generate_with_1min("test-key", "gpt-image-1", "sample prompt", (800, 480))
+    assert called_payload["model"] == "gpt-image-2.5-flare"
 
 
 

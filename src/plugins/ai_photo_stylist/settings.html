@@ -257,8 +257,8 @@
     <div class="form-group">
         <label for="openaiImageModel" class="form-label">OpenAI Model</label>
         <select id="openaiImageModel" name="openaiImageModel" class="form-input">
-            <option value="gpt-image-2">GPT Image 2</option>
-            <option value="gpt-image-1">GPT Image 1</option>
+            <option value="gpt-image-2.5-flare">GPT Image 2.5 Flare</option>
+            <option value="gpt-image-2.5-sunburst">GPT Image 2.5 Sunburst</option>
         </select>
     </div>
     <div class="form-group">
@@ -766,7 +766,8 @@
             };
             const savedGeminiModel = pluginSettings.geminiImageModel || 'gemini-nano-banana-2.1';
             document.getElementById('geminiImageModel').value = legacyGeminiModels[savedGeminiModel] || savedGeminiModel;
-            document.getElementById('openaiImageModel').value = pluginSettings.openaiImageModel || 'gpt-image-2';
+            const savedOpenaiModel = pluginSettings.openaiImageModel || 'gpt-image-2.5-flare';
+            document.getElementById('openaiImageModel').value = savedOpenaiModel.startsWith('gpt-image-2.5-') ? savedOpenaiModel : 'gpt-image-2.5-flare';
             document.getElementById('openaiImageQuality').value = pluginSettings.openaiImageQuality || 'medium';
             document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
             document.getElementById('showCaption').checked = pluginSettings.showCaption === 'true';

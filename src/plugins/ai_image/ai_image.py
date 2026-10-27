@@ -22,8 +22,10 @@ NEWS_FEEDS = {
 }
 
 # OpenAI models
-OPENAI_IMAGE_MODELS = ["dall-e-3", "dall-e-2", "gpt-image-1"]
+OPENAI_IMAGE_MODELS = ["dall-e-3", "dall-e-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]
+GPT_IMAGE_MODELS = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]
 DEFAULT_OPENAI_MODEL = "dall-e-3"
+LEGACY_OPENAI_IMAGE_MODELS = {"gpt-image-1": "gpt-image-2.5-flare"}
 
 # Gemini models
 GEMINI_IMAGEN_MODELS = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001", "imagen-4.0-ultra-generate-001"]
@@ -220,11 +222,12 @@ class AIImage(BasePlugin):
         api_key = api_key.encode('ascii', errors='ignore').decode('ascii').strip()
 
         image_model = settings.get('imageModel', DEFAULT_OPENAI_MODEL)
+        image_model = LEGACY_OPENAI_IMAGE_MODELS.get(image_model, image_model)
         if image_model not in OPENAI_IMAGE_MODELS:
             logger.error(f"Invalid OpenAI image model: {image_model}")
             raise RuntimeError("Invalid Image Model provided.")
 
-        image_quality = settings.get('quality', "medium" if image_model == "gpt-image-1" else "standard")
+        image_quality = settings.get('quality', "medium" if image_model in GPT_IMAGE_MODELS else "standard")
 
         logger.info(f"OpenAI Settings: model={image_model}, quality={image_quality}")
 
@@ -370,7 +373,7 @@ class AIImage(BasePlugin):
         if model == "dall-e-3":
             args["size"] = "1792x1024" if orientation == "horizontal" else "1024x1792"
             args["quality"] = quality
-        elif model == "gpt-image-1":
+        elif model in GPT_IMAGE_MODELS:
             args["size"] = "1536x1024" if orientation == "horizontal" else "1024x1536"
             args["quality"] = quality
 
@@ -382,7 +385,7 @@ class AIImage(BasePlugin):
             buf = BytesIO(response.content)
             img = Image.open(buf).copy()
             buf.close()
-        elif model == "gpt-image-1":
+        elif model in GPT_IMAGE_MODELS:
             image_base64 = response.data[0].b64_json
             buf = BytesIO(base64.b64decode(image_base64))
             img = Image.open(buf).copy()

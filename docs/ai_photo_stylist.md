@@ -19,7 +19,7 @@ Configure your API key in **Settings > API Keys** depending on the provider you 
 
 1. **1min.ai** (Multi-model aggregator):
    - Key: `ONE_MIN_AI_API_KEY`
-   - Models: `gpt-image-1`, `gpt-image-1-mini`, `gpt-image-2`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `gemini-2-5-flash-image`, `grok-2-image-1212`
+   - Models: `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `gemini-2-5-flash-image`, `grok-2-image-1212`
 
 2. **Google Gemini** (Direct):
    - Key: `GOOGLE_GEMINI_SECRET`
@@ -27,7 +27,7 @@ Configure your API key in **Settings > API Keys** depending on the provider you 
 
 3. **OpenAI** (Direct):
    - Key: `OPEN_AI_SECRET`
-   - Models: `gpt-image-2`, `gpt-image-1`
+   - Models: `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`
 
 ## File Locations
 

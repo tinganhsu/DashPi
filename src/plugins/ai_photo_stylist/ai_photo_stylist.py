@@ -22,15 +22,14 @@ logger = logging.getLogger(__name__)
 ONE_MIN_FEATURES_URL = "https://api.1min.ai/api/features"
 ONE_MIN_ASSET_BASE_URL = "https://asset.1min.ai"
 ONE_MIN_IMAGE_MODELS = {
-    "gpt-image-1": "GPT Image 1 (1min.ai)",
-    "gpt-image-1-mini": "GPT Image 1 Mini (1min.ai)",
-    "gpt-image-2": "GPT Image 2 (1min.ai)",
+    "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst (1min.ai)",
+    "gpt-image-2.5-flare": "GPT Image 2.5 Flare (1min.ai)",
     "gemini-3.1-flash-image-preview": "Gemini 3.1 Flash Image Preview (1min.ai)",
     "gemini-3-pro-image-preview": "Gemini 3 Pro Image Preview (1min.ai)",
     "gemini-2-5-flash-image": "Gemini 2.5 Flash Image (1min.ai)",
     "grok-2-image-1212": "Grok-2 Image (1min.ai)",
 }
-DEFAULT_ONE_MIN_MODEL = "gpt-image-1"
+DEFAULT_ONE_MIN_MODEL = "gpt-image-2.5-flare"
 ONE_MIN_MODEL_ALIASES = {
     "grok-2-image": "grok-2-image-1212",
     "grok-2": "grok-2-image-1212",
@@ -119,8 +118,9 @@ GEMINI_INTERACTION_TIMEOUT_SECONDS = 300
 GEMINI_RETRY_STATUS_CODES = (500, 502, 503, 504)
 GEMINI_RETRY_BACKOFF_SECONDS = (5, 15)
 GEMINI_MAX_ATTEMPTS = len(GEMINI_RETRY_BACKOFF_SECONDS) + 1
-OPENAI_IMAGE_MODELS = ["gpt-image-2", "gpt-image-1"]
-DEFAULT_OPENAI_MODEL = "gpt-image-2"
+OPENAI_IMAGE_MODELS = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]
+DEFAULT_OPENAI_MODEL = "gpt-image-2.5-flare"
+LEGACY_OPENAI_IMAGE_MODELS = {"gpt-image-1": DEFAULT_OPENAI_MODEL, "gpt-image-2": DEFAULT_OPENAI_MODEL}
 OPENAI_IMAGE_QUALITIES = {"auto", "low", "medium", "high"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heif", ".heic", ".avif"}
 USAGE_STATE_VERSION = 1
@@ -269,6 +269,7 @@ class AIPhotoStylist(BasePlugin):
                 if not api_key:
                     raise RuntimeError("OpenAI API Key not configured. Add OPEN_AI_SECRET in Settings > API Keys.")
                 model = settings.get("openaiImageModel", DEFAULT_OPENAI_MODEL)
+                model = LEGACY_OPENAI_IMAGE_MODELS.get(model, model)
                 if model not in OPENAI_IMAGE_MODELS:
                     raise RuntimeError("Invalid OpenAI image model provided.")
                 quality = self._normalize_openai_quality(settings.get("openaiImageQuality", "medium"))
@@ -710,7 +711,7 @@ class AIPhotoStylist(BasePlugin):
                 "size": grok_size,
             }
         else:
-            # gpt-image-1, gpt-image-1-mini, gpt-image-2, etc.
+            # gpt-image-2.5-sunburst, gpt-image-2.5-flare
             prompt_object = {
                 "prompt": prompt,
                 "n": 1,
@@ -770,9 +771,6 @@ class AIPhotoStylist(BasePlugin):
             "quality": quality,
             "size": size,
         }
-        if model == "gpt-image-1":
-            request_args["input_fidelity"] = "high"
-
         logger.info(f"OpenAI Photo Stylist settings: model={model}, quality={quality}, size={size}")
 
         try:
@@ -815,12 +813,6 @@ class AIPhotoStylist(BasePlugin):
         width, height = dimensions
         if width <= 0 or height <= 0:
             return "1024x1024"
-
-        if model == "gpt-image-1":
-            ratio = width / height
-            if 0.85 <= ratio <= 1.15:
-                return "1024x1024"
-            return "1536x1024" if ratio > 1 else "1024x1536"
 
         return self._openai_gpt_image_2_size(width, height)
 
