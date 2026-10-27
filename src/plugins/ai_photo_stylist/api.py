@@ -1,7 +1,6 @@
 """API routes for AI Photo Stylist uploads, cache downloads, and file lists."""
 
 from io import BytesIO
-from urllib.parse import quote
 import logging
 import os
 import time
@@ -9,6 +8,7 @@ import zipfile
 
 from flask import Blueprint, current_app, jsonify, request, send_file, send_from_directory
 
+from plugins.ai_photo_stylist.thumbnails import ensure_thumbnail, thumbnail_path, thumbnail_url
 from utils.app_utils import resolve_path, sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -50,22 +50,8 @@ def _thumb_dir():
     return thumb_dir
 
 
-def _static_url_for_path(file_path):
-    try:
-        static_dir = os.path.abspath(resolve_path("static"))
-        abs_path = os.path.abspath(file_path)
-        rel_path = os.path.relpath(abs_path, static_dir)
-        if rel_path.startswith(".."):
-            return ""
-        return "/static/" + "/".join(quote(part) for part in rel_path.split(os.sep))
-    except (OSError, ValueError):
-        return ""
-
-
-def _thumb_path_for(file_name):
-    stem = os.path.splitext(file_name)[0]
-    thumb_name = f"{sanitize_filename(stem) or 'photo'}.jpg"
-    return os.path.join(_thumb_dir(), thumb_name)
+def _cached_thumb_dir():
+    return os.path.join(_cached_dir(), "thumbs")
 
 
 def _is_allowed_image_file(file_path):
@@ -125,10 +111,9 @@ def upload_image():
             file_name,
             os.path.getsize(file_path),
         )
-        thumbnail_url = _static_url_for_path(file_path)
         thumbnail = request.files.get("thumbnail")
         if thumbnail and thumbnail.filename:
-            thumb_path = _thumb_path_for(file_name)
+            thumb_path = thumbnail_path(_thumb_dir(), file_name)
             thumbnail.save(thumb_path)
             try:
                 from PIL import Image
@@ -141,13 +126,12 @@ def upload_image():
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return jsonify({"error": "Thumbnail is not a valid image"}), 400
-            thumbnail_url = _static_url_for_path(thumb_path)
 
         return jsonify({
             "success": True,
             "file_path": file_path,
             "file_name": file_name,
-            "thumbnail_url": thumbnail_url,
+            "thumbnail_url": thumbnail_url("upload", file_path),
         }), 200
 
     except Exception:
@@ -204,11 +188,10 @@ def delete_image():
         if os.path.isfile(abs_path):
             os.remove(abs_path)
             logger.info("Deleted AI Photo Stylist image: %s", os.path.basename(abs_path))
-        if is_upload:
-            thumb_path = _thumb_path_for(os.path.basename(abs_path))
-            if os.path.isfile(thumb_path):
-                os.remove(thumb_path)
-                logger.info("Deleted AI Photo Stylist thumbnail: %s", os.path.basename(thumb_path))
+        thumb_path = thumbnail_path(_thumb_dir() if is_upload else _cached_thumb_dir(), abs_path)
+        if os.path.isfile(thumb_path):
+            os.remove(thumb_path)
+            logger.info("Deleted AI Photo Stylist thumbnail: %s", os.path.basename(thumb_path))
 
         if is_upload:
             settings = device_config.get_config(SETTINGS_KEY, default={})
@@ -282,6 +265,29 @@ def download_cached_file(filename):
     except Exception:
         logger.exception("Error downloading AI Photo Stylist cached image")
         return jsonify({"error": "Download failed"}), 500
+
+
+@ai_photo_stylist_bp.route("/plugin/ai_photo_stylist/thumbnail/<kind>/<path:filename>")
+def thumbnail(kind, filename):
+    """Serve a small preview of an upload or cached image, making it on first use."""
+    dirs = {"upload": (_upload_dir, _thumb_dir), "cached": (_cached_dir, _cached_thumb_dir)}
+    if kind not in dirs:
+        return jsonify({"error": "Unknown image kind"}), 404
+    file_name = sanitize_filename(os.path.basename(filename))
+    if not file_name or file_name != filename or not _is_allowed_image_file(file_name):
+        return jsonify({"error": "Invalid image filename"}), 400
+
+    source_dir, thumb_dir = dirs[kind]
+    source_path = os.path.join(source_dir(), file_name)
+    if not os.path.isfile(source_path):
+        return jsonify({"error": "Image not found"}), 404
+
+    # The URL carries the source mtime, so a changed image gets a new URL and
+    # the browser can keep this one for a long time.
+    thumb = ensure_thumbnail(source_path, thumb_dir())
+    if thumb is None:
+        return send_file(source_path, max_age=86400)
+    return send_file(thumb, mimetype="image/jpeg", max_age=30 * 86400)
 
 
 @ai_photo_stylist_bp.route("/plugin/ai_photo_stylist/save_image_list", methods=["POST"])

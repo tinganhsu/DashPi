@@ -4,6 +4,7 @@ from io import BytesIO
 from unittest.mock import MagicMock
 import zipfile
 import json
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -86,32 +87,29 @@ def test_settings_template_includes_cached_image_count(plugin):
     assert [item["name"] for item in template["cached_images"]] == ["first.png", "second.jpg"]
 
 
-def test_settings_template_includes_upload_thumbnail_urls(plugin):
-    upload = plugin._test_upload_dir / "source.png"
-    thumb_dir = plugin._test_upload_dir / "thumbs"
-    thumb_dir.mkdir()
-    thumb = thumb_dir / "source.jpg"
-    _create_test_image(upload)
-    _create_test_image(thumb, size=(40, 30), color="green")
+def test_settings_template_points_tiles_at_the_thumbnail_route(plugin):
+    _create_test_image(plugin._test_upload_dir / "source.png")
+    _create_test_image(plugin._test_cached_dir / "cached.png")
 
     template = plugin.generate_settings_template()
 
-    assert template["available_images"][0]["name"] == "source.png"
-    assert template["available_images"][0]["thumbnail_url"].endswith(
-        "/static/images/ai_photo_stylist/uploads/thumbs/source.jpg"
+    upload_url = template["available_images"][0]["thumbnail_url"]
+    cached_url = template["cached_images"][0]["thumbnail_url"]
+    assert upload_url.startswith("/plugin/ai_photo_stylist/thumbnail/upload/source.png?v=")
+    assert cached_url.startswith("/plugin/ai_photo_stylist/thumbnail/cached/cached.png?v=")
+
+
+def test_saving_a_cached_image_also_writes_its_thumbnail(plugin):
+    path = plugin._save_cached_image(
+        Image.new("RGB", (1600, 1200), "red"), "/photos/source.jpg", {"id": "ukiyo"}
     )
 
-
-def test_settings_template_includes_cached_thumbnail_urls(plugin):
-    cached = plugin._test_cached_dir / "cached.png"
-    _create_test_image(cached)
-
-    template = plugin.generate_settings_template()
-
-    assert template["cached_images"][0]["name"] == "cached.png"
-    assert template["cached_images"][0]["thumbnail_url"].endswith(
-        "/static/images/ai_photo_stylist/cached/cached.png"
-    )
+    thumbs = list((plugin._test_cached_dir / "thumbs").glob("*.jpg"))
+    assert [t.stem for t in thumbs] == [Path(path).stem]
+    with Image.open(thumbs[0]) as thumb:
+        assert max(thumb.size) == 320
+    # The thumbs folder must not show up as a cached image itself.
+    assert [item["path"] for item in plugin._get_cached_images()] == [path]
 
 
 def test_missing_gemini_key_raises(plugin, mock_device_config, tmp_path):
@@ -905,3 +903,86 @@ def test_gemini_retries_sdk_server_error_without_status_code(monkeypatch):
 
     assert mod._call_gemini_with_retry(create) == "interaction"
     assert len(attempts) == 2
+
+
+def _patch_api_dirs(monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    cached_dir = tmp_path / "cached"
+    upload_dir.mkdir()
+    cached_dir.mkdir()
+    monkeypatch.setattr("plugins.ai_photo_stylist.api._upload_dir", lambda: str(upload_dir))
+    monkeypatch.setattr("plugins.ai_photo_stylist.api._cached_dir", lambda: str(cached_dir))
+    monkeypatch.setattr("plugins.ai_photo_stylist.api._thumb_dir", lambda: str(upload_dir / "thumbs"))
+    return upload_dir, cached_dir
+
+
+@pytest.mark.parametrize("kind", ["upload", "cached"])
+def test_thumbnail_route_makes_a_small_preview_on_first_use(client, monkeypatch, tmp_path, kind):
+    upload_dir, cached_dir = _patch_api_dirs(monkeypatch, tmp_path)
+    source_dir = upload_dir if kind == "upload" else cached_dir
+    _create_test_image(source_dir / "big.png", size=(2400, 1600))
+
+    resp = client.get(f"/plugin/ai_photo_stylist/thumbnail/{kind}/big.png?v=1")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/jpeg"
+    assert "max-age" in resp.headers["Cache-Control"]
+    with Image.open(BytesIO(resp.data)) as thumb:
+        assert thumb.size == (320, 213)
+    assert (source_dir / "thumbs" / "big.jpg").is_file()
+
+
+def test_thumbnail_route_rebuilds_a_preview_older_than_its_source(client, monkeypatch, tmp_path):
+    import os
+
+    upload_dir, _ = _patch_api_dirs(monkeypatch, tmp_path)
+    (upload_dir / "thumbs").mkdir()
+    stale = upload_dir / "thumbs" / "photo.jpg"
+    _create_test_image(stale, size=(10, 10), color="green")
+    os.utime(stale, (1, 1))
+    _create_test_image(upload_dir / "photo.png", size=(640, 640))
+
+    resp = client.get("/plugin/ai_photo_stylist/thumbnail/upload/photo.png")
+
+    with Image.open(BytesIO(resp.data)) as thumb:
+        assert thumb.size == (320, 320)
+
+
+@pytest.mark.parametrize("path, status", [
+    ("/plugin/ai_photo_stylist/thumbnail/upload/../secret.png", 400),
+    ("/plugin/ai_photo_stylist/thumbnail/upload/notes.txt", 400),
+    ("/plugin/ai_photo_stylist/thumbnail/other/a.png", 404),
+    ("/plugin/ai_photo_stylist/thumbnail/upload/missing.png", 404),
+])
+def test_thumbnail_route_rejects_bad_requests(client, monkeypatch, tmp_path, path, status):
+    _patch_api_dirs(monkeypatch, tmp_path)
+    assert client.get(path).status_code == status
+
+
+def test_delete_cached_image_removes_its_thumbnail(client, monkeypatch, mock_device_config, tmp_path):
+    _, cached_dir = _patch_api_dirs(monkeypatch, tmp_path)
+    cached_file = cached_dir / "cached.png"
+    _create_test_image(cached_file)
+    (cached_dir / "thumbs").mkdir()
+    thumb_file = cached_dir / "thumbs" / "cached.jpg"
+    _create_test_image(thumb_file)
+
+    resp = client.post("/plugin/ai_photo_stylist/delete_image", json={"file_path": str(cached_file)})
+
+    assert resp.status_code == 200
+    assert not thumb_file.exists()
+
+
+def test_upload_without_browser_thumbnail_returns_thumbnail_route(client, monkeypatch, tmp_path):
+    _patch_api_dirs(monkeypatch, tmp_path)
+    original = BytesIO()
+    Image.new("RGB", (120, 80), "blue").save(original, format="PNG")
+    original.seek(0)
+
+    resp = client.post(
+        "/plugin/ai_photo_stylist/upload_image",
+        data={"file": (original, "source.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert resp.get_json()["thumbnail_url"].startswith("/plugin/ai_photo_stylist/thumbnail/upload/source.png?v=")
