@@ -103,14 +103,16 @@ def _raise_for_1min_status(resp, action: str) -> None:
 
 
 GEMINI_IMAGE_MODELS = [
-    "gemini-3.1-flash-image",
+    "gemini-nano-banana-2.1",
+    "gemini-3.1-flash-lite-image",
     "gemini-3-pro-image",
 ]
-DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-image"
-# Older saved settings may still reference generateContent-era model ids.
+DEFAULT_GEMINI_MODEL = "gemini-nano-banana-2.1"
+# Older saved settings may still reference previous Nano Banana ids.
 LEGACY_GEMINI_MODEL_MAP = {
-    "gemini-2.5-flash-image": "gemini-3.1-flash-image",
-    "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+    "gemini-2.5-flash-image": "gemini-3.1-flash-lite-image",
+    "gemini-3.1-flash-image": "gemini-nano-banana-2.1",
+    "gemini-3.1-flash-image-preview": "gemini-nano-banana-2.1",
     "gemini-3-pro-image-preview": "gemini-3-pro-image",
 }
 GEMINI_INTERACTION_TIMEOUT_SECONDS = 300
@@ -127,36 +129,15 @@ DEFAULT_PROMPT_TEMPLATE = {
     "prompt_parts": [
         "{vibe_prompt}",
         (
-            "Use the input photo only as source material for the subject, pose, expression, hairstyle, "
-            "clothing, and overall likeness. Recreate the person as a new hand-made artwork in the selected "
-            "style, preserving the subject's spirit and recognizable impression rather than exact photographic "
-            "identity."
-        ),
-        (
-            "Strongly stylize the face and body into the selected art language. Simplify, exaggerate, redraw, "
-            "or abstract facial features when the style calls for it; do not keep the original photo's exact "
-            "skin texture, lighting, camera look, or pixel-level facial details."
-        ),
-        (
-            "The result must look like a complete illustration, painting, print, drawing, poster, or other "
-            "non-photographic artwork, not a filtered photo, retouched photo, colorized photo, photorealistic "
-            "rendering, 3D render, or realistic portrait with a style overlay."
-        ),
-        (
-            "Let the selected style dominate color, texture, linework, composition, lighting, background treatment, "
-            "and overall artistic mood. Preserve the exact number of people and their general relationships, but "
-            "allow artistic reinterpretation of faces as long as the subjects remain evocative of the source."
-        ),
-        (
-            "Adapt the composition to {composition} while keeping the main subject prominent. Fill the requested "
-            "aspect ratio naturally and regenerate the background in a style-consistent way. Make the image readable "
-            "on a medium-resolution e-paper display with bold shapes, clear contrast, and the distinctive visual "
-            "language of the selected art style."
-        ),
-        (
-            "Avoid text, typography, letters, captions, watermark, logo, signature, photorealism, photographic "
-            "skin detail, distorted facial features, extra limbs, extra fingers, blurry face, and unreadable "
-            "facial details."
+            "Transform the provided photograph into a complete hand-made artwork in that style. Use the photo "
+            "only as source material for who is present, their pose, expression, hairstyle, clothing, and the "
+            "spirit of their likeness. Redraw the face and body with the marks, color, and light of the selected "
+            "style, so the result keeps the person's recognizable impression without the original photo's skin "
+            "texture, lighting, or camera look. Keep the same number of people and their general relationships. "
+            "Adapt the composition to {composition}, keep the main subject large and clear, and regenerate the "
+            "whole background in the same art style. The image should read clearly on a medium-resolution e-paper "
+            "display, with bold shapes and clear contrast. The finished picture is one illustration, painting, "
+            "print, drawing, or poster, with no title, caption, signature, watermark, logo, or readable lettering."
         ),
     ]
 }
@@ -638,7 +619,7 @@ class AIPhotoStylist(BasePlugin):
         custom_prompt = (custom_prompt or "").strip()
         if custom_prompt:
             prompt_parts.append(custom_prompt)
-        return " ".join(prompt_parts)
+        return "\n\n".join(prompt_parts)
 
     def _load_default_prompt_parts(self):
         prompt_path = Path(self.get_plugin_dir(os.path.join("resources", "default-prompt.json")))

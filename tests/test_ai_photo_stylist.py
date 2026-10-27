@@ -173,6 +173,52 @@ def test_generate_image_uses_1min_provider(plugin, mock_device_config):
     plugin._generate_with_openai.assert_not_called()
 
 
+def test_generate_image_uses_nano_banana_2_1_by_default(plugin, mock_device_config):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+
+    plugin.generate_image({
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "fitMode": "fit",
+    }, mock_device_config)
+
+    assert plugin._generate_with_gemini.call_args.args[1] == "gemini-nano-banana-2.1"
+
+
+def test_generate_image_maps_legacy_gemini_models(plugin, mock_device_config):
+    img_path = plugin._test_upload_dir / "source.png"
+    _create_test_image(img_path)
+    mock_device_config.load_env_key.return_value = "gemini-key"
+    plugin._generate_with_gemini = MagicMock(return_value=Image.new("RGB", (640, 360), "green"))
+
+    plugin.generate_image({
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "geminiImageModel": "gemini-3.1-flash-image",
+        "fitMode": "fit",
+    }, mock_device_config)
+    assert plugin._generate_with_gemini.call_args.args[1] == "gemini-nano-banana-2.1"
+
+    plugin.generate_image({
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "geminiImageModel": "gemini-2.5-flash-image",
+        "fitMode": "fit",
+    }, mock_device_config)
+    assert plugin._generate_with_gemini.call_args.args[1] == "gemini-3.1-flash-lite-image"
+
+    plugin.generate_image({
+        "imageFiles[]": [str(img_path)],
+        "vibeId": plugin._load_vibes()[0]["id"],
+        "geminiImageModel": "gemini-3-pro-image",
+        "fitMode": "fit",
+    }, mock_device_config)
+    assert plugin._generate_with_gemini.call_args.args[1] == "gemini-3-pro-image"
+
+
 def test_generate_image_caches_success(plugin, mock_device_config):
     img_path = plugin._test_upload_dir / "source.png"
     _create_test_image(img_path)
@@ -200,10 +246,10 @@ def test_build_prompt_uses_external_default_prompt(plugin):
         orientation="vertical",
     )
 
-    assert prompt.startswith("vivid folk art portrait")
+    assert prompt.startswith("vivid folk art portrait\n\n")
     assert "vertical composition, portrait orientation" in prompt
-    assert "rather than exact photographic identity" in prompt
-    assert "not a filtered photo" in prompt
+    assert "spirit of their likeness" in prompt
+    assert "readable lettering" in prompt
     assert "limited tonal range" not in prompt
 
 

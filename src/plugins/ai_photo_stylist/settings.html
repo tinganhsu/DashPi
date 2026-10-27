@@ -223,8 +223,9 @@
 <div id="geminiOptions" class="form-group dropdown-container">
     <label for="geminiImageModel" class="form-label">Gemini Model</label>
     <select id="geminiImageModel" name="geminiImageModel" class="form-input">
-        <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
-        <option value="gemini-3-pro-image">Gemini 3 Pro Image</option>
+        <option value="gemini-nano-banana-2.1">Nano Banana 2.1</option>
+        <option value="gemini-3.1-flash-lite-image">Nano Banana 2 Lite</option>
+        <option value="gemini-3-pro-image">Nano Banana Pro</option>
     </select>
 </div>
 
@@ -702,11 +703,12 @@
             document.getElementById('randomizePhoto').checked = pluginSettings.randomizePhoto === 'true';
             document.getElementById('includeCachedInRandom').checked = pluginSettings.includeCachedInRandom === 'true';
             const legacyGeminiModels = {
-                'gemini-2.5-flash-image': 'gemini-3.1-flash-image',
-                'gemini-3.1-flash-image-preview': 'gemini-3.1-flash-image',
+                'gemini-2.5-flash-image': 'gemini-3.1-flash-lite-image',
+                'gemini-3.1-flash-image': 'gemini-nano-banana-2.1',
+                'gemini-3.1-flash-image-preview': 'gemini-nano-banana-2.1',
                 'gemini-3-pro-image-preview': 'gemini-3-pro-image'
             };
-            const savedGeminiModel = pluginSettings.geminiImageModel || 'gemini-3.1-flash-image';
+            const savedGeminiModel = pluginSettings.geminiImageModel || 'gemini-nano-banana-2.1';
             document.getElementById('geminiImageModel').value = legacyGeminiModels[savedGeminiModel] || savedGeminiModel;
             document.getElementById('openaiImageModel').value = pluginSettings.openaiImageModel || 'gpt-image-2';
             document.getElementById('openaiImageQuality').value = pluginSettings.openaiImageQuality || 'medium';

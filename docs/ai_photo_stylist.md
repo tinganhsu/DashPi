@@ -23,7 +23,7 @@ Configure your API key in **Settings > API Keys** depending on the provider you 
 
 2. **Google Gemini** (Direct):
    - Key: `GOOGLE_GEMINI_SECRET`
-   - Models: `gemini-3.1-flash-image`, `gemini-3-pro-image`
+   - Models: `gemini-nano-banana-2.1` (Nano Banana 2.1, default), `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite), `gemini-3-pro-image` (Nano Banana Pro)
 
 3. **OpenAI** (Direct):
    - Key: `OPEN_AI_SECRET`
@@ -77,7 +77,7 @@ The shared prompt wrapper is stored separately so the default generation behavio
 src/plugins/ai_photo_stylist/resources/default-prompt.json
 ```
 
-`default-prompt.json` should be a JSON object with a `prompt_parts` array. The plugin joins these strings together to build the final prompt. Include `{vibe_prompt}` where the selected style prompt should appear. You can also use `{composition}` to insert either the vertical or horizontal display orientation.
+`default-prompt.json` should be a JSON object with a `prompt_parts` array. The plugin joins these strings with a blank line, so the style prompt and the shared instructions stay as two paragraphs. Include `{vibe_prompt}` where the selected style prompt should appear. You can also use `{composition}` to insert either the vertical or horizontal display orientation.
 
 ```json
 {
