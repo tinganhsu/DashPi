@@ -39,6 +39,20 @@
         overflow: hidden;
     }
 
+    .ai-stylist-thumb-item[hidden] {
+        display: none;
+    }
+
+    .ai-stylist-show-more {
+        background: none;
+        border: none;
+        color: var(--accent-color, #2196f3);
+        font-size: 0.85em;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 6px 0;
+    }
+
     #fileNames .ai-stylist-thumb-item {
         cursor: pointer;
         transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -139,6 +153,7 @@
         </button>
     </div>
     <div id="fileNames" class="file-name-list ai-stylist-thumb-list"></div>
+    <button type="button" id="fileNamesMore" class="ai-stylist-show-more" hidden onclick="showMoreThumbs('fileNames')"></button>
 </div>
 
 <div id="hiddenFileInputs"></div>
@@ -178,6 +193,7 @@
         </a>
     </div>
     <div id="cachedFileNames" class="file-name-list ai-stylist-thumb-list"></div>
+    <button type="button" id="cachedFileNamesMore" class="ai-stylist-show-more" hidden onclick="showMoreThumbs('cachedFileNames')"></button>
 </div>
 
 <div class="form-group">
@@ -329,6 +345,13 @@
                 const data = await resp.json();
                 uploadsInProgress--;
                 if (data.success) {
+                    // A new upload goes to the end of the list; widen the
+                    // page so it does not vanish behind "Show more".
+                    const list = document.getElementById('fileNames');
+                    list.dataset.visible = Math.max(
+                        Number(list.dataset.visible || THUMB_PAGE_SIZE),
+                        list.querySelectorAll('.ai-stylist-thumb-item').length + 1
+                    );
                     addFileToList(data.file_name, data.file_path, false, data.thumbnail_url || '');
                 } else {
                     statusEl.textContent = `Error uploading ${file.name}: ${data.error}`;
@@ -589,7 +612,29 @@
         updateCachedFileListHeader();
     }
 
+    // Only the first page of tiles is shown; a hidden tile's lazy <img> is
+    // never fetched, so a long list costs nothing until it is expanded.
+    const THUMB_PAGE_SIZE = 24;
+
+    function applyThumbPaging(listId) {
+        const list = document.getElementById(listId);
+        const items = list.querySelectorAll('.ai-stylist-thumb-item');
+        const limit = Number(list.dataset.visible || THUMB_PAGE_SIZE);
+        items.forEach((item, index) => { item.hidden = index >= limit; });
+        const remaining = Math.max(0, items.length - limit);
+        const button = document.getElementById(`${listId}More`);
+        button.hidden = remaining === 0;
+        button.textContent = `Show more (${remaining} more)`;
+    }
+
+    function showMoreThumbs(listId) {
+        const list = document.getElementById(listId);
+        list.dataset.visible = Number(list.dataset.visible || THUMB_PAGE_SIZE) + THUMB_PAGE_SIZE;
+        applyThumbPaging(listId);
+    }
+
     function updateCachedFileListHeader() {
+        applyThumbPaging('cachedFileNames');
         const count = document.querySelectorAll('#cachedFileNames .file-name').length;
         const header = document.getElementById('cachedFileListHeader');
         const countEl = document.getElementById('cachedFileCount');
@@ -602,6 +647,7 @@
     }
 
     function updateFileListHeader() {
+        applyThumbPaging('fileNames');
         const count = getCurrentFilePaths().length;
         const header = document.getElementById('fileListHeader');
         const countEl = document.getElementById('fileCount');
@@ -659,7 +705,9 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
-        cachedImages.forEach(item => addCachedFileToList(item.name, item.path, item.thumbnail_url || ''));
+        // Newest first, so the first page shows the latest results. Names
+        // start with a timestamp, which is why the server list is ascending.
+        cachedImages.slice().reverse().forEach(item => addCachedFileToList(item.name, item.path, item.thumbnail_url || ''));
 
         let existingFiles = discoveredImages.map(item => item.path);
         const discoveredByPath = new Map(discoveredImages.map(item => [item.path, item]));
