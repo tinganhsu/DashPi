@@ -7,11 +7,27 @@ setup page. Provides API endpoints for network scanning and credential submissio
 
 import logging
 
-from flask import Blueprint, request, jsonify, current_app, render_template, redirect, url_for
+from flask import Blueprint, request, jsonify, current_app, render_template, redirect, url_for, session
 from utils.wifi_manager import STATE_AP_MODE
 
 logger = logging.getLogger(__name__)
 wifi_bp = Blueprint("wifi", __name__)
+
+
+def _setup_access_denied():
+    """Refuse the portal to strangers unless the device is in AP mode.
+
+    The portal endpoints are public so a phone on the hotspot can provision
+    the device without a password. Outside AP mode that same openness would
+    let anyone on the LAN move the device onto their own network, so there it
+    takes a signed-in session like every other page.
+    """
+    wifi_manager = current_app.config.get('WIFI_MANAGER')
+    if (wifi_manager and wifi_manager.state == STATE_AP_MODE) or session.get('authenticated'):
+        return None
+    if request.endpoint == 'wifi.wifi_portal':
+        return redirect(url_for('auth.login', next=request.path))
+    return jsonify({"success": False, "error": "Unauthorized"}), 401
 
 
 @wifi_bp.route('/wifi')
@@ -21,6 +37,10 @@ def wifi_portal():
     Scans for available networks and displays them in a mobile-friendly form.
     Accessible at http://10.42.0.1/wifi when in AP mode.
     """
+    denied = _setup_access_denied()
+    if denied:
+        return denied
+
     wifi_manager = current_app.config.get('WIFI_MANAGER')
     device_config = current_app.config['DEVICE_CONFIG']
 
@@ -39,6 +59,10 @@ def wifi_scan():
     Returns JSON list of networks with ssid, signal strength, and security type.
     Called by the captive portal UI's rescan button.
     """
+    denied = _setup_access_denied()
+    if denied:
+        return denied
+
     wifi_manager = current_app.config.get('WIFI_MANAGER')
     if not wifi_manager:
         return jsonify({"networks": []})
@@ -55,6 +79,10 @@ def wifi_connect():
     internet connectivity. Returns the new IP on success, or an error message
     on failure (AP mode is automatically restarted on failure).
     """
+    denied = _setup_access_denied()
+    if denied:
+        return denied
+
     wifi_manager = current_app.config.get('WIFI_MANAGER')
     display_manager = current_app.config.get('DISPLAY_MANAGER')
     device_config = current_app.config['DEVICE_CONFIG']
