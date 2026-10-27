@@ -119,6 +119,9 @@ install_access_control(
     app,
     device_config,
     public_endpoints=DEFAULT_PUBLIC_ENDPOINTS | DASHPI_WIFI_PUBLIC_ENDPOINTS,
+    # Uploaded photos and rendered plugin images live here; the public display
+    # page reads the current image through /api/current_image instead.
+    private_static_dirs=("images",),
 )
 
 # Inject project_name and version into all templates

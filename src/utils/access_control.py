@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import secrets
 import threading
 import time
@@ -192,6 +193,7 @@ def install_access_control(
     public_endpoints: Iterable[str] | None = None,
     secret_path: str | Path | None = None,
     pre_auth: Callable[[], Any] | None = None,
+    private_static_dirs: Iterable[str] = (),
 ) -> None:
     """Gate every request: optional pre-auth, CSRF, then session login.
 
@@ -211,12 +213,24 @@ def install_access_control(
           the gate (used by DashESP for ``/api/esp32/*`` after its key check).
         * a Flask response — short-circuit with that response (e.g. 401).
         * ``None`` — continue with CSRF + session checks.
+    private_static_dirs:
+        Directories under the static folder that still need a session even
+        though ``static`` itself is public (e.g. user-uploaded photos).
     """
     if secret_path is not None and not app.secret_key:
         app.secret_key = resolve_secret_key(secret_path)
 
     allowed = frozenset(public_endpoints) if public_endpoints is not None else DEFAULT_PUBLIC_ENDPOINTS
     throttle = LoginThrottle()
+    private_dirs = tuple(d.strip("/") for d in private_static_dirs)
+
+    def is_private_static() -> bool:
+        if request.endpoint != "static" or not private_dirs:
+            return False
+        # Normalised the way the static handler resolves it, so "./images" or
+        # "images//saved" cannot slip past a plain prefix comparison.
+        filename = posixpath.normpath((request.view_args or {}).get("filename", "")).lstrip("/")
+        return any(filename == d or filename.startswith(d + "/") for d in private_dirs)
 
     def wants_json() -> bool:
         return request.path.startswith("/api/") or (
@@ -278,7 +292,7 @@ def install_access_control(
                     {"Retry-After": str(seconds)},
                 )
 
-        if not request.endpoint or request.endpoint in allowed:
+        if not request.endpoint or (request.endpoint in allowed and not is_private_static()):
             return None
 
         # 4. First run: force the admin password to be chosen before anything

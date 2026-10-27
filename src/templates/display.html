@@ -62,7 +62,7 @@
 </head>
 <body>
     <div class="display-container">
-        <img id="displayImage" src="{{ url_for('static', filename='images/current_image.png') }}" alt="Current Display">
+        <img id="displayImage" src="{{ url_for('main.get_current_image') }}" alt="Current Display">
     </div>
     <div class="timestamp" id="timestamp"></div>
 </body>

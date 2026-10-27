@@ -71,7 +71,7 @@ def gated_app():
     def device_ping():
         return jsonify({"ok": True})
 
-    install_access_control(app, config)
+    install_access_control(app, config, private_static_dirs=("images",))
     return app
 
 
@@ -243,3 +243,28 @@ def test_install_sets_secret_key_from_path(monkeypatch, tmp_path):
 def test_default_public_endpoints_cover_display_and_auth():
     assert "main.display_page" in DEFAULT_PUBLIC_ENDPOINTS
     assert "auth.login" in DEFAULT_PUBLIC_ENDPOINTS
+
+
+@pytest.mark.parametrize("path", [
+    "/static/images/saved/photo.jpg",
+    "/static/./images/saved/photo.jpg",
+    "/static/images//saved/photo.jpg",
+    "/static/images",
+])
+def test_private_static_dirs_need_a_session(client, path):
+    response = client.get(path)
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_other_static_files_stay_public(client):
+    # 404 rather than a login redirect: the gate let it through and the file
+    # simply does not exist in the test app.
+    assert client.get("/static/styles/main.css").status_code == 404
+    assert client.get("/static/imagesfoo/x.png").status_code == 404
+
+
+def test_private_static_dirs_open_once_signed_in(client):
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+    assert client.get("/static/images/saved/photo.jpg").status_code == 404
