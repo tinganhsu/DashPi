@@ -4,6 +4,8 @@ All notable changes to DashPi are documented here.
 
 ## [Unreleased]
 
+## [2.2.5] — 2026-10-27
+
 ### Added
 - **AI Photo Stylist 1min.ai integration**: Added 1min.ai as an AI provider with multi-model support (GPT Image 1/2, Gemini 3.1 Flash/3 Pro, Grok-2), dynamic model parameter formatting, and preset `ONE_MIN_AI_API_KEY` configuration.
 - **Third-party plugin root**: Plugins installed with `dashpi plugin install` now live in `<project_root>/plugins` instead of `src/plugins`, so they are no longer untracked directories inside the tracked source tree. The location is overridable with `DASHPI_PLUGINS_DIR`, and the web UI passes it to the CLI so the installer and plugin discovery cannot disagree. Built-in plugins always win an id collision, and `dashpi plugin uninstall` can no longer reach — and delete — a built-in.
@@ -11,6 +13,7 @@ All notable changes to DashPi are documented here.
 - **Plugin hot reload**: Installing, updating, or uninstalling a plugin from the web UI now takes effect in the running server instead of restarting the service. The reload's verdict is streamed into the existing job output. A plugin that registers its own Flask routes still needs a restart, because Flask refuses `register_blueprint()` after the first request has been served, and the output says so explicitly.
 
 ### Changed
+- **GPT Image 2.5 models**: AI Photo Stylist (1min.ai and OpenAI providers) and AI Image now offer GPT Image 2.5 Sunburst and Flare in place of GPT Image 1, 1 Mini, and 2, defaulting to Flare. Saved settings that still name a retired GPT Image model fall back to Flare instead of failing.
 - **Plugin management keys on install location**: Whether a plugin can be updated or uninstalled is now decided by which root it was found in, not by the presence of a `repository` key in its `plugin-info.json`. The install CLI only writes that key when `jq` is available, so a plugin installed without it could not be managed from the UI at all.
 
 ### Fixed
