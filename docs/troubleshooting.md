@@ -48,6 +48,13 @@ If the DashPi service is not running, try manually running the startup script to
 sudo /usr/local/bin/dashpi -d
 ```
 
+## "Unknown host" when opening the web UI
+
+To block DNS-rebinding attacks, DashPi only answers requests addressed to its IP, `localhost`, its hostname or `<hostname>.local`. If you reach it through another name (a reverse proxy or a custom DNS record), add that name to `.env` and restart the service:
+```bash
+DASHPI_ALLOWED_HOSTS=dashpi.example.com,frame.home.arpa
+```
+
 ## API Key not configured
 
 Some plugins require API Keys to be configured in order to run. These need to be configured in a .env file at the root of the project. See [API Keys](api_keys.md) for details.

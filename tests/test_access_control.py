@@ -14,6 +14,7 @@ from utils.access_control import (
     PRE_AUTH_ALLOW,
     LoginThrottle,
     csrf_origin_ok,
+    host_is_trusted,
     install_access_control,
     resolve_secret_key,
 )
@@ -268,3 +269,38 @@ def test_private_static_dirs_open_once_signed_in(client):
     with client.session_transaction() as sess:
         sess["authenticated"] = True
     assert client.get("/static/images/saved/photo.jpg").status_code == 404
+
+
+@pytest.mark.parametrize("host, expected", [
+    ("192.168.1.20", True),
+    ("192.168.1.20:8080", True),
+    ("[fe80::1]:80", True),
+    ("localhost:8080", True),
+    ("dashpi.local", True),
+    ("DashPi.Local.", True),
+    ("dashpi", True),
+    ("evil.example", False),
+    ("dashpi.local.evil.example", False),
+    ("", False),
+])
+def test_host_is_trusted(host, expected):
+    assert host_is_trusted(host, {"localhost", "dashpi", "dashpi.local"}) is expected
+
+
+def test_untrusted_host_is_refused_before_anything_else():
+    app = Flask(__name__)
+    app.secret_key = "test"
+
+    @app.route("/display", endpoint="main.display_page")
+    def display_page():
+        return "public display"
+
+    install_access_control(
+        app, FakeConfig(), host_allowed=lambda host: host_is_trusted(host, {"dashpi.local"})
+    )
+    client = app.test_client()
+
+    # A DNS-rebinding page reaches the device under the attacker's hostname.
+    assert client.get("/display", base_url="http://rebind.evil.example").status_code == 400
+    assert client.get("/display", base_url="http://dashpi.local").status_code == 200
+    assert client.get("/display", base_url="http://10.0.0.5").status_code == 200

@@ -12,6 +12,7 @@ Both products import this file as-is. DashESP pulls it through
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import posixpath
@@ -135,6 +136,26 @@ def csrf_origin_ok(origin: str | None, referer: str | None, host: str) -> bool:
     return False
 
 
+def host_is_trusted(host: str, names: Iterable[str]) -> bool:
+    """Whether a Host header names this device rather than someone else's domain.
+
+    A DNS-rebinding page talks to the device under the attacker's hostname,
+    and the CSRF check cannot tell, because it compares Origin against that
+    same Host. An IP literal is always accepted, since a rebinding page cannot
+    make the browser send one; otherwise the hostname (port and trailing dot
+    ignored) must be one of ``names``.
+    """
+    hostname = (urlsplit("//" + host).hostname or "").rstrip(".")
+    if not hostname:
+        return False
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+    return hostname in {name.lower().rstrip(".") for name in names}
+
+
 class LoginThrottle:
     """Per-IP exponential backoff for failed logins.
 
@@ -194,6 +215,7 @@ def install_access_control(
     secret_path: str | Path | None = None,
     pre_auth: Callable[[], Any] | None = None,
     private_static_dirs: Iterable[str] = (),
+    host_allowed: Callable[[str], bool] | None = None,
 ) -> None:
     """Gate every request: optional pre-auth, CSRF, then session login.
 
@@ -216,6 +238,9 @@ def install_access_control(
     private_static_dirs:
         Directories under the static folder that still need a session even
         though ``static`` itself is public (e.g. user-uploaded photos).
+    host_allowed:
+        Optional check on the Host header, run before everything else; a
+        request it rejects gets a 400. See :func:`host_is_trusted`.
     """
     if secret_path is not None and not app.secret_key:
         app.secret_key = resolve_secret_key(secret_path)
@@ -250,6 +275,11 @@ def install_access_control(
 
     @app.before_request
     def enforce_access_control() -> Any:
+        # 0. Refuse hostnames that are not ours (DNS rebinding).
+        if host_allowed is not None and not host_allowed(request.host):
+            logger.warning("Untrusted host blocked remote=%s host=%r", request.remote_addr, request.host)
+            return "Unknown host", 400
+
         # 1. Product-specific early auth (device keys, etc.).
         if pre_auth is not None:
             early = pre_auth()

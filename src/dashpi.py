@@ -22,11 +22,12 @@ from utils.app_utils import generate_startup_image
 from utils.access_control import (
     DASHPI_WIFI_PUBLIC_ENDPOINTS,
     DEFAULT_PUBLIC_ENDPOINTS,
+    host_is_trusted,
     install_access_control,
     resolve_secret_key,
 )
-from utils.wifi_manager import WifiManager
-from flask import Flask
+from utils.wifi_manager import STATE_AP_MODE, WifiManager
+from flask import Flask, request
 from config import Config
 from display.display_manager import DisplayManager
 from refresh_task import RefreshTask
@@ -115,6 +116,24 @@ app.register_blueprint(wifi_bp)
 app.register_blueprint(auth_bp)
 register_plugin_blueprints(app)
 
+# Names the device answers to besides its IP. Behind a reverse proxy or a
+# custom DNS name, list the extra hostnames in DASHPI_ALLOWED_HOSTS (comma
+# separated, e.g. in .env, which Config() has loaded by now).
+_hostname = socket.gethostname().removesuffix(".local")
+_trusted_host_names = {"localhost", _hostname, f"{_hostname}.local"} | {
+    name.strip() for name in os.getenv("DASHPI_ALLOWED_HOSTS", "").split(",") if name.strip()
+}
+
+
+def host_allowed(host):
+    if host_is_trusted(host, _trusted_host_names):
+        return True
+    # When the hotspot's DNS answers for every name, a phone's captive-portal
+    # probe arrives as e.g. captive.apple.com, and the portal it is redirected
+    # to keeps that host.
+    return wifi_manager.state == STATE_AP_MODE and request.endpoint in DASHPI_WIFI_PUBLIC_ENDPOINTS
+
+
 install_access_control(
     app,
     device_config,
@@ -122,6 +141,7 @@ install_access_control(
     # Uploaded photos and rendered plugin images live here; the public display
     # page reads the current image through /api/current_image instead.
     private_static_dirs=("images",),
+    host_allowed=host_allowed,
 )
 
 # Inject project_name and version into all templates
