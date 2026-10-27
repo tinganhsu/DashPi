@@ -138,6 +138,14 @@
             }
         }
 
+        // SSIDs are chosen by whoever runs a nearby access point, so they
+        // must never reach innerHTML unescaped.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
         async function scanWifiNetworks() {
             const list = document.getElementById('wifiNetworkList');
             list.innerHTML = '<option value="">Scanning...</option>';
@@ -151,7 +159,7 @@
                     data.networks.forEach(net => {
                         const signal = net.signal > 66 ? '▰▰▰' : (net.signal > 33 ? '▰▰▱' : '▰▱▱');
                         const lock = net.security ? ' 🔒' : '';
-                        html += `<option value="${net.ssid}" data-security="${net.security}">${net.ssid} ${signal}${lock}</option>`;
+                        html += `<option value="${escapeHtml(net.ssid)}" data-security="${escapeHtml(net.security)}">${escapeHtml(net.ssid)} ${signal}${lock}</option>`;
                     });
                 }
                 html += '<option value="__other__">Other network...</option>';

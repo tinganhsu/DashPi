@@ -330,7 +330,8 @@
                 <ul class="network-list" id="networkList">
                     {% if networks %}
                         {% for net in networks %}
-                        <li class="network-item" onclick="selectNetwork(this, {{ net.ssid|tojson }}, {{ net.security|tojson }})">
+                        <li class="network-item" data-ssid="{{ net.ssid }}" data-security="{{ net.security }}"
+                            onclick="selectNetwork(this, this.dataset.ssid, this.dataset.security)">
                             <input type="radio" name="network" value="{{ net.ssid }}" id="net-{{ loop.index }}">
                             <div class="network-info">
                                 <div class="network-name">{{ net.ssid }}</div>
@@ -478,6 +479,14 @@
             }
         }
 
+        // SSIDs are chosen by whoever runs a nearby access point, so they
+        // must never reach innerHTML unescaped.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
         function renderNetworkList(networks) {
             const list = document.getElementById('networkList');
             let html = '';
@@ -488,11 +497,12 @@
                                        (net.signal > 33 ? '●●○' : '●○○');
                     const lockIcon = net.security ? '<span class="lock-icon">🔒</span>' : '';
                     html += `
-                        <li class="network-item" onclick="selectNetwork(this, '${net.ssid.replace(/'/g, "\\'")}', '${net.security}')">
-                            <input type="radio" name="network" value="${net.ssid}" id="net-${i}">
+                        <li class="network-item" data-ssid="${escapeHtml(net.ssid)}" data-security="${escapeHtml(net.security)}"
+                            onclick="selectNetwork(this, this.dataset.ssid, this.dataset.security)">
+                            <input type="radio" name="network" value="${escapeHtml(net.ssid)}" id="net-${i}">
                             <div class="network-info">
-                                <div class="network-name">${net.ssid}</div>
-                                <div class="network-meta">${net.security || 'Open'}</div>
+                                <div class="network-name">${escapeHtml(net.ssid)}</div>
+                                <div class="network-meta">${escapeHtml(net.security || 'Open')}</div>
                             </div>
                             ${lockIcon}
                             <span class="signal-icon">${signalIcons}</span>
