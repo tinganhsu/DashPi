@@ -247,6 +247,7 @@ def test_build_prompt_uses_external_default_prompt(plugin):
     assert prompt.startswith("vivid folk art portrait\n\n")
     assert "vertical composition, portrait orientation" in prompt
     assert "spirit of their likeness" in prompt
+    assert "never stretch or squash the people" in prompt
     assert "readable lettering" in prompt
     assert "limited tonal range" not in prompt
 

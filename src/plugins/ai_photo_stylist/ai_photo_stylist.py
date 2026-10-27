@@ -135,7 +135,9 @@ DEFAULT_PROMPT_TEMPLATE = {
             "style, so the result keeps the person's recognizable impression without the original photo's skin "
             "texture, lighting, or camera look. Keep the same number of people and their general relationships. "
             "Adapt the composition to {composition}, keep the main subject large and clear, and regenerate the "
-            "whole background in the same art style. The image should read clearly on a medium-resolution e-paper "
+            "whole background in the same art style. Keep everyone's natural face and body proportions: never "
+            "stretch or squash the people to fit the frame, and fill any extra space by extending the background "
+            "in the same style. The image should read clearly on a medium-resolution e-paper "
             "display, with bold shapes and clear contrast. The finished picture is one illustration, painting, "
             "print, drawing, or poster, with no title, caption, signature, watermark, logo, or readable lettering."
         ),
