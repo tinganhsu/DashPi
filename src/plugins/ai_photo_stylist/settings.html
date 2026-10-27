@@ -24,6 +24,14 @@
 </div>
 
 <style>
+    /* .form-group is a wrapping flex row; without a full basis the list
+       header sits beside the grid and squeezes it into fewer columns. */
+    .ai-stylist-list-header,
+    .ai-stylist-thumb-list,
+    .ai-stylist-show-more {
+        flex-basis: 100%;
+    }
+
     .ai-stylist-thumb-list {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
@@ -145,7 +153,7 @@
 </div>
 
 <div class="form-group">
-    <div id="fileListHeader" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+    <div id="fileListHeader" class="ai-stylist-list-header" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 4px;">
         <span style="font-size: 0.85em; color: var(--text-secondary, #888);" id="fileCount"></span>
         <button type="button" onclick="clearAllFiles()"
             style="background: none; border: none; color: #f44336; font-size: 0.8em; font-weight: 600; cursor: pointer; padding: 2px 6px;">
@@ -185,7 +193,7 @@
 </div>
 
 <div class="form-group">
-    <div id="cachedFileListHeader" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+    <div id="cachedFileListHeader" class="ai-stylist-list-header" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 4px;">
         <span style="font-size: 0.85em; color: var(--text-secondary, #888);" id="cachedFileCount"></span>
         <a id="downloadCachedButton" href="/plugin/ai_photo_stylist/download_cached"
            style="color: var(--accent-color, #2196f3); font-size: 0.8em; font-weight: 600; text-decoration: none; padding: 2px 6px;">
