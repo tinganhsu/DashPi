@@ -4,6 +4,12 @@ All notable changes to DashPi are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **AI Photo Stylist 1min.ai ignored the source photo**: The 1min.ai provider called `IMAGE_GENERATOR` with the prompt only, so results never followed the selected photo. It now uploads the photo through the Asset API and calls `IMAGE_EDITOR` with it as `imageUrl`.
+
+### Changed
+- **AI Photo Stylist 1min.ai models**: Removed Grok-2 Image (no image-edit support on 1min.ai) and added Qwen Image 3.0 Edit and Qwen Image 3.0 Pro Edit. Gemini 2.5 Flash Image now uses 1min.ai's `gemini-2.5-flash-image` id; saved Grok settings fall back to GPT Image 2.5 Flare and the old Gemini 2.5 id still resolves.
+
 ## [2.2.5] — 2026-10-27
 
 ### Added

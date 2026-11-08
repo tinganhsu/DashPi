@@ -19,7 +19,8 @@ Configure your API key in **Settings > API Keys** depending on the provider you 
 
 1. **1min.ai** (Multi-model aggregator):
    - Key: `ONE_MIN_AI_API_KEY`
-   - Models: `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `gemini-2-5-flash-image`, `grok-2-image-1212`
+   - Models: `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare`, `gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`, `gemini-2.5-flash-image`, `qwen-image-3.0`, `qwen-image-3.0-pro`
+   - The source photo is uploaded to 1min.ai's Asset API, then restyled via the `IMAGE_EDITOR` feature. Only models that accept a source image are offered.
 
 2. **Google Gemini** (Direct):
    - Key: `GOOGLE_GEMINI_SECRET`

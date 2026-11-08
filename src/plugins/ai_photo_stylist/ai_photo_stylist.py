@@ -20,24 +20,28 @@ import time
 logger = logging.getLogger(__name__)
 
 ONE_MIN_FEATURES_URL = "https://api.1min.ai/api/features"
+ONE_MIN_ASSETS_URL = "https://api.1min.ai/api/assets"
 ONE_MIN_ASSET_BASE_URL = "https://asset.1min.ai"
+# Only models that accept a source image via 1min.ai's IMAGE_EDITOR feature —
+# a stylist has to restyle the user's photo, so text-only generators don't fit.
 ONE_MIN_IMAGE_MODELS = {
     "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst (1min.ai)",
     "gpt-image-2.5-flare": "GPT Image 2.5 Flare (1min.ai)",
     "gemini-3.1-flash-image-preview": "Gemini 3.1 Flash Image Preview (1min.ai)",
     "gemini-3-pro-image-preview": "Gemini 3 Pro Image Preview (1min.ai)",
-    "gemini-2-5-flash-image": "Gemini 2.5 Flash Image (1min.ai)",
-    "grok-2-image-1212": "Grok-2 Image (1min.ai)",
+    "gemini-2.5-flash-image": "Gemini 2.5 Flash Image (1min.ai)",
+    "qwen-image-3.0": "Qwen Image 3.0 Edit (1min.ai)",
+    "qwen-image-3.0-pro": "Qwen Image 3.0 Pro Edit (1min.ai)",
 }
 DEFAULT_ONE_MIN_MODEL = "gpt-image-2.5-flare"
 ONE_MIN_MODEL_ALIASES = {
-    "grok-2-image": "grok-2-image-1212",
-    "grok-2": "grok-2-image-1212",
     "gemini-3-pro": "gemini-3-pro-image-preview",
     "gemini-3.1-flash": "gemini-3.1-flash-image-preview",
-    "gemini-2.5-flash": "gemini-2-5-flash-image",
+    "gemini-2.5-flash": "gemini-2.5-flash-image",
+    "gemini-2-5-flash-image": "gemini-2.5-flash-image",
 }
-
+# 1min.ai rejects source images above 10MB; re-encode to stay well under it.
+ONE_MIN_UPLOAD_MAX_EDGE = 2048
 
 def _has_key(v) -> bool:
     return bool(v and str(v).strip())
@@ -263,7 +267,7 @@ class AIPhotoStylist(BasePlugin):
                 if not api_key:
                     raise RuntimeError("1min.ai API Key not configured. Add ONE_MIN_AI_API_KEY in Settings > API Keys.")
                 model = settings.get("oneMinImageModel", DEFAULT_ONE_MIN_MODEL)
-                generated = self._generate_with_1min(api_key, model, final_prompt, dimensions)
+                generated = self._generate_with_1min(api_key, model, image_path, final_prompt, dimensions)
             elif provider == "openai":
                 api_key = device_config.load_env_key("OPEN_AI_SECRET")
                 if not api_key:
@@ -669,7 +673,7 @@ class AIPhotoStylist(BasePlugin):
 
         raise RuntimeError("Gemini returned no image in response.")
 
-    def _generate_with_1min(self, api_key: str, model: str, prompt: str, dimensions: tuple[int, int]) -> Image.Image:
+    def _generate_with_1min(self, api_key: str, model: str, image_path, prompt: str, dimensions: tuple[int, int]) -> Image.Image:
         import requests
 
         api_key = (api_key or "").encode("ascii", errors="ignore").decode("ascii").strip()
@@ -678,69 +682,30 @@ class AIPhotoStylist(BasePlugin):
             logger.warning(f"Unknown 1min.ai model '{model}', falling back to {DEFAULT_ONE_MIN_MODEL}")
             model = DEFAULT_ONE_MIN_MODEL
 
-        w, h = dimensions
-        is_horizontal = (w >= h)
-        aspect_ratio = "3:2" if is_horizontal else "2:3"
-        size = "1536x1024" if is_horizontal else "1024x1536"
+        source_path = self._upload_1min_asset(api_key, image_path)
+        prompt_object = self._one_min_editor_prompt_object(model, source_path, prompt, dimensions)
 
-        if model == "gemini-3.1-flash-image-preview":
-            prompt_object = {
-                "prompt": prompt,
-                "imageSize": "2K",
-                "aspectRatio": aspect_ratio,
-                "temperature": 1.0,
-                "topP": 0.95,
-            }
-        elif model == "gemini-3-pro-image-preview":
-            prompt_object = {
-                "prompt": prompt,
-                "imageSize": "2K",
-                "temperature": 1.0,
-                "topP": 0.95,
-            }
-        elif model == "gemini-2-5-flash-image":
-            prompt_object = {
-                "prompt": prompt,
-                "aspect_ratio": aspect_ratio,
-            }
-        elif model in ("grok-2-image-1212", "grok-2-image"):
-            grok_size = "1024x768" if is_horizontal else "768x1024"
-            prompt_object = {
-                "prompt": prompt,
-                "n": 1,
-                "size": grok_size,
-            }
-        else:
-            # gpt-image-2.5-sunburst, gpt-image-2.5-flare
-            prompt_object = {
-                "prompt": prompt,
-                "n": 1,
-                "size": size,
-                "quality": "medium",
-                "output_format": "png",
-            }
-
-        logger.info(
-            f"Generating 1min.ai image: model={model}, size/ratio="
-            f"{prompt_object.get('size') or prompt_object.get('aspectRatio') or prompt_object.get('aspect_ratio')}"
-        )
+        size_desc = prompt_object.get("size") or prompt_object.get("imageSize")
+        if "width" in prompt_object:
+            size_desc = f"{prompt_object['width']}x{prompt_object['height']}"
+        logger.info(f"Editing image via 1min.ai: model={model}, source={source_path}, size={size_desc or 'default'}")
 
         try:
             resp = requests.post(
                 ONE_MIN_FEATURES_URL,
                 headers=_one_min_headers(api_key),
                 json={
-                    "type": "IMAGE_GENERATOR",
+                    "type": "IMAGE_EDITOR",
                     "model": model,
                     "promptObject": prompt_object,
                 },
                 timeout=(10, 180),
             )
-            _raise_for_1min_status(resp, "1min.ai image request failed")
+            _raise_for_1min_status(resp, "1min.ai image edit request failed")
         except Exception as e:
             if isinstance(e, RuntimeError):
                 raise
-            raise RuntimeError(f"1min.ai image generation request failed: {e}") from e
+            raise RuntimeError(f"1min.ai image edit request failed: {e}") from e
 
         image_url = _extract_1min_image_url(resp.json())
         if not image_url:
@@ -753,6 +718,75 @@ class AIPhotoStylist(BasePlugin):
             return image
         except Exception as e:
             raise RuntimeError(f"Failed to download image from 1min.ai ({image_url}): {e}") from e
+
+    def _upload_1min_asset(self, api_key: str, image_path) -> str:
+        """Upload the source photo to 1min.ai's Asset API and return its storage path."""
+        import requests
+
+        buf = BytesIO()
+        with Image.open(image_path) as input_image:
+            image = input_image.convert("RGB")
+            image.thumbnail((ONE_MIN_UPLOAD_MAX_EDGE, ONE_MIN_UPLOAD_MAX_EDGE))
+            image.save(buf, format="JPEG", quality=92)
+        buf.seek(0)
+
+        try:
+            resp = requests.post(
+                ONE_MIN_ASSETS_URL,
+                headers={"API-KEY": api_key},
+                files={"asset": ("source.jpg", buf, "image/jpeg")},
+                timeout=(10, 60),
+            )
+            _raise_for_1min_status(resp, "1min.ai asset upload failed")
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            raise RuntimeError(f"1min.ai asset upload failed: {e}") from e
+        finally:
+            buf.close()
+
+        payload = resp.json()
+        path = ((payload.get("asset") or {}).get("key") or (payload.get("fileContent") or {}).get("path") or "").strip()
+        if not path:
+            raise RuntimeError("1min.ai asset upload returned no asset path.")
+        return path
+
+    def _one_min_editor_prompt_object(self, model: str, source_path: str, prompt: str, dimensions: tuple[int, int]) -> dict:
+        w, h = dimensions
+        is_horizontal = w >= h
+        long_edge, short_edge = 1536, 1024
+        width, height = (long_edge, short_edge) if is_horizontal else (short_edge, long_edge)
+
+        if model in ("gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"):
+            return {
+                "imageUrl": source_path,
+                "prompt": prompt,
+                "imageSize": "2K",
+                "temperature": 1.0,
+                "topP": 0.95,
+            }
+        if model == "gemini-2.5-flash-image":
+            return {
+                "imageUrl": source_path,
+                "prompt": prompt,
+            }
+        if model in ("qwen-image-3.0", "qwen-image-3.0-pro"):
+            return {
+                "imageUrl": source_path,
+                "prompt": prompt,
+                "n": 1,
+                "width": width,
+                "height": height,
+            }
+        # gpt-image-2.5-sunburst, gpt-image-2.5-flare
+        return {
+            "imageUrl": source_path,
+            "prompt": prompt,
+            "n": 1,
+            "size": f"{width}x{height}",
+            "quality": "medium",
+            "output_format": "png",
+        }
 
     def _generate_with_openai(self, api_key, model, image_path, prompt, dimensions, quality):
         try:

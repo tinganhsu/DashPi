@@ -157,7 +157,7 @@ def test_generate_image_uses_1min_provider(plugin, mock_device_config):
         "provider": "1min",
         "imageFiles[]": [str(img_path)],
         "vibeId": plugin._load_vibes()[0]["id"],
-        "oneMinImageModel": "grok-2-image-1212",
+        "oneMinImageModel": "qwen-image-3.0",
         "fitMode": "fit",
     }, mock_device_config)
 
@@ -166,7 +166,8 @@ def test_generate_image_uses_1min_provider(plugin, mock_device_config):
     plugin._generate_with_1min.assert_called_once()
     args = plugin._generate_with_1min.call_args.args
     assert args[0] == "one-min-key"
-    assert args[1] == "grok-2-image-1212"
+    assert args[1] == "qwen-image-3.0"
+    assert args[2] == str(img_path)
     plugin._generate_with_gemini.assert_not_called()
     plugin._generate_with_openai.assert_not_called()
 
@@ -768,67 +769,73 @@ def test_extract_1min_image_url():
     assert _extract_1min_image_url(payload_str_rel) == "https://asset.1min.ai/generated/output_456.png"
 
 
-def test_generate_with_1min_payload_and_download(plugin, monkeypatch):
+def test_generate_with_1min_uploads_source_and_edits(plugin, monkeypatch):
     import requests
 
-    called_payload = {}
+    posts = []
     mock_img_bytes = BytesIO()
     Image.new("RGB", (1536, 1024), "purple").save(mock_img_bytes, format="PNG")
-    mock_img_bytes.seek(0)
+    src_path = plugin._test_upload_dir / "source_1min.png"
+    _create_test_image(src_path)
 
-    class MockPostResponse:
+    class MockResponse:
+        def __init__(self, body=None, content=b""):
+            self._body = body
+            self.content = content
+
         def raise_for_status(self):
             pass
 
         def json(self):
-            return {
-                "aiRecord": {
-                    "temporaryUrl": "https://asset.1min.ai/test_img.png"
-                }
-            }
+            return self._body
 
-    class MockGetResponse:
-        content = mock_img_bytes.getvalue()
-
-        def raise_for_status(self):
-            pass
-
-    def mock_post(url, headers=None, json=None, timeout=None):
-        nonlocal called_payload
-        called_payload = json
-        return MockPostResponse()
+    def mock_post(url, headers=None, json=None, files=None, timeout=None):
+        posts.append({"url": url, "headers": headers, "json": json, "files": files})
+        if files is not None:
+            return MockResponse({"asset": {"key": "images/source.jpg"}})
+        return MockResponse({"aiRecord": {"temporaryUrl": "https://asset.1min.ai/test_img.png"}})
 
     def mock_get(url, timeout=None):
-        return MockGetResponse()
+        return MockResponse(content=mock_img_bytes.getvalue())
 
     monkeypatch.setattr(requests, "post", mock_post)
     monkeypatch.setattr(requests, "get", mock_get)
 
-    # 1. Test Gemini preview model
-    img = plugin._generate_with_1min("test-key", "gemini-3.1-flash-image-preview", "sample prompt", (800, 480))
-    assert_valid_image(img)
-    assert called_payload["type"] == "IMAGE_GENERATOR"
-    assert called_payload["model"] == "gemini-3.1-flash-image-preview"
-    assert called_payload["promptObject"]["aspectRatio"] == "3:2"
-    assert called_payload["promptObject"]["imageSize"] == "2K"
+    def edit_call(model, dims=(800, 480)):
+        posts.clear()
+        img = plugin._generate_with_1min("test-key", model, src_path, "sample prompt", dims)
+        assert_valid_image(img)
+        upload, edit = posts
+        assert upload["url"] == "https://api.1min.ai/api/assets"
+        assert upload["files"]["asset"][2] == "image/jpeg"
+        assert edit["url"] == "https://api.1min.ai/api/features"
+        assert edit["json"]["type"] == "IMAGE_EDITOR"
+        assert edit["json"]["promptObject"]["imageUrl"] == "images/source.jpg"
+        assert edit["json"]["promptObject"]["prompt"] == "sample prompt"
+        return edit["json"]
 
-    # 2. Test Grok-2 model with vertical dimensions
-    img_v = plugin._generate_with_1min("test-key", "grok-2-image-1212", "sample prompt", (480, 800))
-    assert_valid_image(img_v)
-    assert called_payload["model"] == "grok-2-image-1212"
-    assert called_payload["promptObject"]["size"] == "768x1024"
+    # 1. Gemini preview model
+    payload = edit_call("gemini-3.1-flash-image-preview")
+    assert payload["model"] == "gemini-3.1-flash-image-preview"
+    assert payload["promptObject"]["imageSize"] == "2K"
 
-    # 3. Test GPT-image model with horizontal dimensions
-    img_gpt = plugin._generate_with_1min("test-key", "gpt-image-2.5-sunburst", "sample prompt", (800, 480))
-    assert_valid_image(img_gpt)
-    assert called_payload["model"] == "gpt-image-2.5-sunburst"
-    assert called_payload["promptObject"]["size"] == "1536x1024"
-    assert called_payload["promptObject"]["quality"] == "medium"
+    # 2. Qwen Image 3.0 with vertical dimensions
+    payload = edit_call("qwen-image-3.0-pro", (480, 800))
+    assert payload["model"] == "qwen-image-3.0-pro"
+    assert (payload["promptObject"]["width"], payload["promptObject"]["height"]) == (1024, 1536)
 
-    # 4. Retired GPT Image 1/2 ids fall back to the default Flare model
-    plugin._generate_with_1min("test-key", "gpt-image-1", "sample prompt", (800, 480))
-    assert called_payload["model"] == "gpt-image-2.5-flare"
+    # 3. GPT-image model with horizontal dimensions
+    payload = edit_call("gpt-image-2.5-sunburst")
+    assert payload["model"] == "gpt-image-2.5-sunburst"
+    assert payload["promptObject"]["size"] == "1536x1024"
+    assert payload["promptObject"]["quality"] == "medium"
 
+    # 4. Retired GPT Image 1/2 and removed Grok ids fall back to the default Flare model
+    assert edit_call("gpt-image-1")["model"] == "gpt-image-2.5-flare"
+    assert edit_call("grok-2-image-1212")["model"] == "gpt-image-2.5-flare"
+
+    # 5. Legacy Gemini 2.5 Flash id maps to 1min.ai's editor id
+    assert edit_call("gemini-2-5-flash-image")["model"] == "gemini-2.5-flash-image"
 
 
 class _FakeGeminiError(Exception):
