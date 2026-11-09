@@ -275,6 +275,56 @@ MiniWeather.get_blueprint = lambda self: _bp()
         assert result["loaded"] == []
         assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
 
+    def test_a_failed_update_does_not_keep_serving_the_old_version(self, user_root, mock_device_config):
+        """Reporting 'loaded' while the previous instance keeps running hides the failure."""
+        from plugins import plugin_registry
+
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+        plugin_registry.reload_user_plugins(config)
+        assert "mini_weather" in plugin_registry.PLUGIN_CLASSES
+
+        (user_root / "mini_weather.py").write_text("raise RuntimeError('bad update')\n")
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["loaded"] == []
+        assert result["failed"] == ["mini_weather"]
+        assert "mini_weather" not in plugin_registry.PLUGIN_CLASSES
+        assert result["restart_required"] is True
+        assert "bad update" in result["restart_reason"]
+
+    def test_a_plugin_that_adds_routes_to_a_core_blueprint_asks_for_a_restart(
+        self, user_root, mock_device_config, monkeypatch
+    ):
+        """Decorating an already-registered blueprint only works at startup."""
+        import types
+
+        from flask import Blueprint, Flask
+        from plugins import plugin_registry
+
+        core_bp = Blueprint("core_plugin_bp", __name__)
+        Flask(__name__).register_blueprint(core_bp)
+        holder = types.ModuleType("fake_core_blueprints")
+        holder.plugin_bp = core_bp
+        monkeypatch.setitem(sys.modules, "fake_core_blueprints", holder)
+        (user_root / "mini_weather.py").write_text(
+            PLUGIN_SOURCE
+            + '''
+from fake_core_blueprints import plugin_bp
+
+
+@plugin_bp.get("/plugin/mini_weather/extra")
+def extra():
+    return "x"
+'''
+        )
+        config = self._config(mock_device_config, [_config_entry(user_root)])
+
+        result = plugin_registry.reload_user_plugins(config)
+
+        assert result["failed"] == ["mini_weather"]
+        assert result["restart_required"] is True
+        assert "mini_weather" in result["restart_reason"]
+
 
 class TestPluginDirResolution:
     def test_base_plugin_reads_plugin_dir_from_config(self, user_root):

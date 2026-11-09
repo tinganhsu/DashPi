@@ -15,6 +15,9 @@ PLUGIN_CLASSES = {}
 # also holds the built-ins: a reload must never be able to drop one of those.
 USER_PLUGIN_IDS = set()
 
+# Why the most recent load_plugins() call could not load a plugin, by id.
+LOAD_ERRORS = {}
+
 
 def plugin_template_roots(device_config):
     """Directories Jinja must search to find a plugin's settings.html.
@@ -73,6 +76,7 @@ def load_plugins(plugins_config):
         _ensure_importable(plugin_dir)
 
         module_name = f"plugins.{plugin_id}.{plugin_id}"
+        LOAD_ERRORS.pop(plugin_id, None)
         try:
             module = importlib.import_module(module_name)
             plugin_class = getattr(module, plugin.get("class"), None)
@@ -84,6 +88,7 @@ def load_plugins(plugins_config):
                     USER_PLUGIN_IDS.add(plugin_id)
 
         except Exception as e:
+            LOAD_ERRORS[plugin_id] = str(e)
             logger.error(f"Failed to load plugin {plugin_id}: {e}")
 
 
@@ -140,7 +145,7 @@ def reload_user_plugins(device_config, app=None):
         if plugin.get("user_installed") and plugin.get("id")
     }
 
-    loaded, removed = [], []
+    loaded, removed, failed = [], [], []
     restart_reason = None
 
     # Only ids loaded from the user root are candidates for unloading, so a
@@ -156,10 +161,24 @@ def reload_user_plugins(device_config, app=None):
         # Re-import unconditionally: an update overwrites the same id in place,
         # and comparing revisions here would duplicate what the CLI already did.
         _forget_modules(plugin_id)
+        # Drop the previous instance first: a failed import would otherwise
+        # leave it in place, and the old code would keep running as "loaded".
+        PLUGIN_CLASSES.pop(plugin_id, None)
         load_plugins([plugin])
         instance = PLUGIN_CLASSES.get(plugin_id)
         if instance is None:
             USER_PLUGIN_IDS.discard(plugin_id)
+            error = LOAD_ERRORS.get(plugin_id)
+            if error:
+                # The import may only fail in a running server — e.g. a plugin
+                # adding routes to a blueprint that is already registered — so
+                # a fresh start is the one remaining way to load it.
+                failed.append(plugin_id)
+                if restart_reason is None:
+                    restart_reason = (
+                        f"'{plugin_id}' could not be loaded into the running "
+                        f"server ({error})."
+                    )
             continue
         loaded.append(plugin_id)
         if restart_reason is None and _exposes_blueprint(instance):
@@ -171,6 +190,7 @@ def reload_user_plugins(device_config, app=None):
     return {
         "loaded": loaded,
         "removed": removed,
+        "failed": failed,
         "restart_required": restart_reason is not None,
         "restart_reason": restart_reason,
     }
