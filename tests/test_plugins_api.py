@@ -82,6 +82,79 @@ class TestWeather:
         forecast = plugin.parse_open_meteo_forecast(daily, "metric", pytz.timezone(tz_name), 1, 25.0)
         assert [d["day"] for d in forecast] == ["Mon", "Tue", "Wed"]
 
+    def test_open_meteo_times_follow_location_zone_not_system_or_device(self, plugin, mock_device_config, monkeypatch):
+        """Open-Meteo (timezone=auto) returns naive location-local times. They must be read in the
+        location's zone, not the host's system zone, and "now" must be the location's now."""
+        import time
+        from datetime import datetime, timedelta
+        import pytz
+
+        # Three different zones: host system, device setting, weather location.
+        monkeypatch.setenv("TZ", "Asia/Tokyo")
+        time.tzset()
+        try:
+            loc = pytz.timezone("America/Chicago")
+            now_loc = datetime.now(loc).replace(minute=0, second=0, microsecond=0, tzinfo=None)
+            start = now_loc - timedelta(hours=3)
+            hours = [(start + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(48)]
+            day0 = now_loc.date()
+            days = [(day0 + timedelta(days=i)).isoformat() for i in range(8)]
+            weather = {
+                "timezone": "America/Chicago", "utc_offset_seconds": -21600,
+                "current": {"time": now_loc.strftime("%Y-%m-%dT%H:%M"), "temperature": 20,
+                            "weather_code": 0, "is_day": 1, "windspeed": 3, "winddirection": 0},
+                "daily": {"time": days, "weathercode": [0] * 8, "temperature_2m_max": [25] * 8,
+                          "temperature_2m_min": [15] * 8,
+                          "sunrise": [f"{d}T06:52" for d in days], "sunset": [f"{d}T17:29" for d in days]},
+                "hourly": {"time": hours, "temperature_2m": list(range(48)), "weather_code": [0] * 48,
+                           "precipitation": [0] * 48, "precipitation_probability": [0] * 48,
+                           "relative_humidity_2m": list(range(48))},
+            }
+            settings = {"latitude": "32.7767", "longitude": "-96.797", "units": "metric",
+                        "weatherProvider": "OpenMeteo", "locationName": "Dallas"}
+            config = {"timezone": "Asia/Taipei", "time_format": "24h"}
+            mock_device_config.get_config.side_effect = lambda k, default=None: config.get(k, default)
+
+            captured = {}
+
+            def fake_render(dimensions, data, settings, display_language="en"):
+                captured.update(data)
+                return Image.new("RGB", dimensions)
+
+            def fake_get(url, *args, **kwargs):
+                resp = MagicMock(status_code=200)
+                resp.json.return_value = {} if "air-quality" in url else weather
+                return resp
+
+            with patch("plugins.weather.weather.get_http_session") as session, \
+                 patch.object(plugin, "_render_pil", side_effect=fake_render):
+                session.return_value.get.side_effect = fake_get
+                plugin.generate_image(settings, mock_device_config)
+        finally:
+            monkeypatch.delenv("TZ")
+            time.tzset()
+
+        points = {p["label"]: p["measurement"] for p in captured["data_points"]}
+        assert points["Sunrise"] == "06:52"
+        assert points["Sunset"] == "17:29"
+        assert captured["current_date"] == plugin.localize_current_date(now_loc, "en")
+        assert captured["hourly_forecast"][0]["time"] == now_loc.strftime("%H:00")
+        assert points["Humidity"] == 3  # hourly index of the location's current hour
+
+    def test_open_meteo_timezone_fallbacks(self, plugin):
+        import pytz
+        from datetime import datetime
+        fallback = pytz.timezone("Asia/Taipei")
+        assert plugin.get_open_meteo_timezone({"timezone": "Europe/Paris"}, fallback).zone == "Europe/Paris"
+        fixed = plugin.get_open_meteo_timezone({"timezone": "Bad/Zone", "utc_offset_seconds": 19800}, fallback)
+        assert fixed.utcoffset(datetime(2026, 1, 1)).total_seconds() == 19800
+        assert plugin.get_open_meteo_timezone({}, fallback) is fallback
+        # Naive local strings get the zone attached (DST-aware), aware strings are converted.
+        paris = pytz.timezone("Europe/Paris")
+        assert plugin.parse_open_meteo_time("2026-07-01T12:00", paris).isoformat() == "2026-07-01T12:00:00+02:00"
+        assert plugin.parse_open_meteo_time("2026-12-01T12:00", paris).isoformat() == "2026-12-01T12:00:00+01:00"
+        assert plugin.parse_open_meteo_time("2026-12-01T12:00+00:00", paris).isoformat() == "2026-12-01T13:00:00+01:00"
+
     def test_open_meteo_forecast_moon_phase_uses_forecast_date(self, plugin):
         import math
         import pytz

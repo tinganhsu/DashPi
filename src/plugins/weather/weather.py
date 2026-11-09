@@ -310,7 +310,10 @@ class Weather(BasePlugin):
                 forecast_days = 7
                 weather_data = self.get_open_meteo_data(lat, long, units, forecast_days + 1)
                 aqi_data = self.get_open_meteo_air_quality(lat, long)
-                template_params = self.parse_open_meteo_data(weather_data, aqi_data, tz, units, time_format, lat, display_language)
+                # Open-Meteo is queried with timezone=auto, so all its times are
+                # the location's local time; display them in that zone.
+                location_tz = self.get_open_meteo_timezone(weather_data, tz)
+                template_params = self.parse_open_meteo_data(weather_data, aqi_data, location_tz, units, time_format, lat, display_language)
             else:
                 raise RuntimeError(f"Unknown weather provider: {weather_provider}")
 
@@ -877,7 +880,7 @@ class Weather(BasePlugin):
         """Parse Open-Meteo API response into the same normalized template dict as parse_weather_data()."""
         current = weather_data.get("current", {})
         daily = weather_data.get('daily', {})
-        dt = datetime.fromisoformat(current.get('time')).astimezone(tz) if current.get('time') else datetime.now(tz)
+        dt = self.parse_open_meteo_time(current['time'], tz) if current.get('time') else datetime.now(tz)
         weather_code = current.get("weather_code", 0)
         is_day = current.get("is_day", 1)
         current_icon = self.map_weather_code_to_icon(weather_code, is_day)
@@ -1157,15 +1160,15 @@ class Weather(BasePlugin):
         
         sun_map = {}
         for sr_s, ss_s in zip(sunrises, sunsets):
-            sr_dt = datetime.fromisoformat(sr_s).astimezone(tz)
-            ss_dt = datetime.fromisoformat(ss_s).astimezone(tz)
+            sr_dt = self.parse_open_meteo_time(sr_s, tz)
+            ss_dt = self.parse_open_meteo_time(ss_s, tz)
             sun_map[sr_dt.date()] = (sr_dt, ss_dt)
         
         current_time_in_tz = datetime.now(tz)
         start_index = 0
         for i, time_str in enumerate(times):
             try:
-                dt_hourly = datetime.fromisoformat(time_str).astimezone(tz)
+                dt_hourly = self.parse_open_meteo_time(time_str, tz)
                 if dt_hourly.date() == current_time_in_tz.date() and dt_hourly.hour >= current_time_in_tz.hour:
                     start_index = i
                     break
@@ -1182,7 +1185,7 @@ class Weather(BasePlugin):
         sliced_codes = codes[start_index:]
 
         for i in range(min(24, len(sliced_times))):
-            dt = datetime.fromisoformat(sliced_times[i]).astimezone(tz)
+            dt = self.parse_open_meteo_time(sliced_times[i], tz)
             sunrise, sunset = sun_map.get(dt.date(), (None, None))
             is_day = 0
             if sunrise and sunset:
@@ -1271,7 +1274,7 @@ class Weather(BasePlugin):
         # Sunrise
         sunrise_times = daily_data.get('sunrise', [])
         if sunrise_times:
-            sunrise_dt = datetime.fromisoformat(sunrise_times[0]).astimezone(tz)
+            sunrise_dt = self.parse_open_meteo_time(sunrise_times[0], tz)
             data_points.append({
                 "label": self.get_localized_text("sunrise", display_language),
                 "measurement": self.format_time(
@@ -1289,7 +1292,7 @@ class Weather(BasePlugin):
         # Sunset
         sunset_times = daily_data.get('sunset', [])
         if sunset_times:
-            sunset_dt = datetime.fromisoformat(sunset_times[0]).astimezone(tz)
+            sunset_dt = self.parse_open_meteo_time(sunset_times[0], tz)
             data_points.append({
                 "label": self.get_localized_text("sunset", display_language),
                 "measurement": self.format_time(
@@ -1320,7 +1323,7 @@ class Weather(BasePlugin):
         humidity_values = hourly_data.get('relative_humidity_2m', [])
         for i, time_str in enumerate(humidity_hourly_times):
             try:
-                if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
+                if self.parse_open_meteo_time(time_str, tz).hour == current_time.hour:
                     if i < len(humidity_values):
                         current_humidity = int(humidity_values[i])
                     break
@@ -1450,6 +1453,35 @@ class Weather(BasePlugin):
 
         return dt.strftime(fmt).lstrip("0")
     
+    def get_open_meteo_timezone(self, weather_data, fallback_tz):
+        """Return the zone Open-Meteo's local times are in (requested with timezone=auto).
+
+        Prefers the IANA name (DST-aware across the forecast window), then the
+        fixed utc_offset_seconds, then the device's configured zone.
+        """
+        import pytz
+
+        name = weather_data.get('timezone')
+        if name:
+            try:
+                return pytz.timezone(name)
+            except pytz.UnknownTimeZoneError:
+                logger.warning(f"Unknown Open-Meteo timezone '{name}', trying utc_offset_seconds")
+        offset = weather_data.get('utc_offset_seconds')
+        if offset is not None:
+            return pytz.FixedOffset(int(offset) // 60)
+        logger.warning("Open-Meteo response has no timezone; assuming the device time zone")
+        return fallback_tz
+
+    @staticmethod
+    def parse_open_meteo_time(time_str, tz):
+        """Parse an Open-Meteo ISO time. Naive values are local to *tz*, so attach it
+        instead of letting astimezone() read them in the host's system zone."""
+        dt = datetime.fromisoformat(time_str)
+        if dt.tzinfo is None:
+            return tz.localize(dt) if hasattr(tz, 'localize') else dt.replace(tzinfo=tz)
+        return dt.astimezone(tz)
+
     def parse_timezone(self, weatherdata):
         """Parse timezone from weather data"""
         import pytz

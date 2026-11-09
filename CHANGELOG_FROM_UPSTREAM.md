@@ -7,6 +7,34 @@
 
 ---
 
+## Fork Chain and Sync Points
+
+Verified 2026-11-09 by comparing tree hashes:
+
+```
+fatihak/InkyPi   fb71cc3 (2026-02-05)
+  → SHagler2/InkyPi   e6db9c1  same tree as fb71cc3, history rewritten so hashes differ
+                      → 643f3fe  v2.0.0 Loop refactor (first SHagler2 commit)
+  → SHagler2/DashPi   d53e79c (2026-02-18)  files copied into a new repo: no shared git history with the two above
+  → tinganhsu/DashPi  this repo (shares history with SHagler2/DashPi)
+```
+
+Where each upstream was last synced. Start the next sync from here, and update this table afterwards.
+
+| Upstream | Synced up to | How | In this repo |
+|---|---|---|---|
+| SHagler2/DashPi | `4f0590e` (2026-10-25) | `git merge` (shared history) | merge `b8a7166` |
+| fatihak/InkyPi | `2099411` (2026-11-04) | manual port (no shared history, so no merge or cherry-pick) | `a16456d` |
+
+- **Next fatihak sync:** clone fatihak/InkyPi, read `git log 2099411..main` and `git diff 2099411 main`, and port item by item.
+- **Deliberately not taken from `fb71cc3..2099411`** (do not redo):
+  - AI Image dropping DALL·E (#723): this repo moved to GPT Image 2.5 and keeps DALL·E.
+  - Pillow 13 (#796): reverted upstream in #800. It breaks Inky palette conversion and the comic plugin's multiline `getbbox`.
+  - image_loader fast path streaming straight into PIL (#781): this repo keeps its download-deadline loop, which guards against slow-trickle hangs.
+  - Immich `get_assets` without pagination (#625): this repo keeps paging, so albums over 1000 photos are listed completely.
+
+---
+
 ## Executive Summary
 
 This fork replaces DashPi's complex **Playlist system** with a simpler **Loop system**. The primary goals were **simplicity**, **stability**, and **enhanced functionality** for personal use on a Raspberry Pi Zero with Inky Impression 7.3" display.
