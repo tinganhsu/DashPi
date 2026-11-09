@@ -48,8 +48,51 @@ class TestWeather:
         return Weather(WEATHER_CONFIG)
 
     def test_missing_coordinates(self, plugin, mock_device_config):
-        with pytest.raises(RuntimeError, match="valid numbers"):
+        with pytest.raises(RuntimeError, match="are required"):
             plugin.generate_image({}, mock_device_config)
+
+    @pytest.mark.parametrize("lat, long", [("", "-96.8"), ("32.7", "  "), (None, "1")])
+    def test_blank_coordinates_are_required(self, plugin, mock_device_config, lat, long):
+        with pytest.raises(RuntimeError, match="are required"):
+            plugin.generate_image({"latitude": lat, "longitude": long, "units": "metric"},
+                                  mock_device_config)
+
+    @pytest.mark.parametrize("lat, long", [("abc", "1"), ("1", "1,5"), ("nan", "1"), ("1", "inf")])
+    def test_non_numeric_coordinates(self, plugin, mock_device_config, lat, long):
+        with pytest.raises(RuntimeError, match="valid numbers"):
+            plugin.generate_image({"latitude": lat, "longitude": long, "units": "metric"},
+                                  mock_device_config)
+
+    def test_manually_typed_coordinates_are_trimmed(self, plugin, mock_device_config):
+        # Whitespace from hand-typed input must not block the request;
+        # it should get past coordinate validation to the units check.
+        with pytest.raises(RuntimeError, match="Units are required"):
+            plugin.generate_image({"latitude": " 0 ", "longitude": "0 "}, mock_device_config)
+
+    @pytest.mark.parametrize("tz_name", ["US/Central", "Asia/Taipei", "UTC", "Pacific/Auckland"])
+    def test_open_meteo_forecast_day_labels_match_dates(self, plugin, tz_name):
+        """Open-Meteo daily dates are already local (timezone=auto); labels must not shift."""
+        import pytz
+        daily = {
+            "time": ["2026-11-09", "2026-11-10", "2026-11-11"],  # Mon, Tue, Wed
+            "weathercode": [0, 0, 0],
+            "temperature_2m_max": [20, 21, 22],
+            "temperature_2m_min": [10, 11, 12],
+        }
+        forecast = plugin.parse_open_meteo_forecast(daily, "metric", pytz.timezone(tz_name), 1, 25.0)
+        assert [d["day"] for d in forecast] == ["Mon", "Tue", "Wed"]
+
+    def test_open_meteo_forecast_moon_phase_uses_forecast_date(self, plugin):
+        import math
+        import pytz
+        from datetime import date
+        from astral import moon
+        daily = {"time": ["2026-11-09"], "weathercode": [0],
+                 "temperature_2m_max": [20], "temperature_2m_min": [10]}
+        forecast = plugin.parse_open_meteo_forecast(daily, "metric", pytz.timezone("Asia/Taipei"), 1, 25.0)
+        age = moon.phase(date(2026, 11, 9))
+        expected = (1 - math.cos(2 * math.pi * age / 29.530588853)) / 2 * 100
+        assert forecast[0]["moon_phase_pct"] == f"{expected:.0f}"
 
     def test_invalid_coordinates(self, plugin, mock_device_config):
         with pytest.raises(RuntimeError, match="Invalid coordinates"):

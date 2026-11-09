@@ -7,7 +7,7 @@ from utils.text_utils import get_text_dimensions, truncate_text
 from utils.layout_utils import draw_rounded_rect
 import os
 import logging
-from datetime import datetime, timedelta, timezone, date
+from datetime import datetime, timezone, date
 from io import BytesIO
 import math
 from utils.http_client import get_http_session
@@ -258,16 +258,19 @@ class Weather(BasePlugin):
 
     def generate_image(self, settings, device_config):
         """Fetch weather data and render the dashboard image."""
-        # Validate and convert coordinates with proper error handling
-        try:
-            lat = float(settings.get('latitude'))
-            long = float(settings.get('longitude'))
-        except (TypeError, ValueError):
-            raise RuntimeError("Latitude and Longitude must be valid numbers.")
-
-        # Check for None/missing (0.0 is a valid coordinate)
-        if settings.get('latitude') is None or settings.get('longitude') is None:
+        # Coordinates may now be typed by hand, so treat blank as missing
+        # (0.0 is a valid coordinate) before trying to parse them.
+        raw_lat, raw_long = ('' if v is None else str(v).strip()
+                             for v in (settings.get('latitude'), settings.get('longitude')))
+        if not raw_lat or not raw_long:
             raise RuntimeError("Latitude and Longitude are required.")
+        try:
+            lat = float(raw_lat)
+            long = float(raw_long)
+        except ValueError:
+            raise RuntimeError("Latitude and Longitude must be valid numbers.")
+        if not (math.isfinite(lat) and math.isfinite(long)):
+            raise RuntimeError("Latitude and Longitude must be valid numbers.")
 
         # Validate coordinate ranges
         if not (-90 <= lat <= 90) or not (-180 <= long <= 180):
@@ -1073,14 +1076,14 @@ class Weather(BasePlugin):
             astral_moon = None
 
         for i in range(len(times)):
-            dt = datetime.fromisoformat(times[i]).replace(tzinfo=timezone.utc).astimezone(tz)
-            day_label = self.localize_day_label(dt, display_language)
+            # Daily dates are already in the location's time zone (timezone=auto);
+            # converting them from UTC shifted the label a day west of UTC.
+            target_date = date.fromisoformat(times[i])
+            day_label = self.localize_day_label(target_date, display_language)
 
             code = weather_codes[i] if i < len(weather_codes) else 0
             weather_icon = self.map_weather_code_to_icon(code, is_day=1)
             weather_icon_path = self.get_plugin_dir(f"icons/{weather_icon}.png")
-
-            target_date: date = dt.date() + timedelta(days=1)
 
             try:
                 phase_age = astral_moon.phase(target_date) if astral_moon else 0

@@ -280,6 +280,23 @@ class TestApplyImageEnhancement:
         result = apply_image_enhancement(img)
         assert result.mode == "RGB"
 
+    def test_neutral_factors_skip_enhancers(self):
+        img = Image.new("RGB", (100, 100), "red")
+        settings = {"brightness": 1.0, "contrast": 1.0, "saturation": 1.0, "sharpness": 1.0}
+        with patch("utils.image_utils.ImageEnhance") as enhance:
+            result = apply_image_enhancement(img, settings)
+        assert result is img
+        assert enhance.method_calls == []
+
+    def test_only_changed_factors_applied(self):
+        img = Image.new("RGB", (100, 100), "red")
+        with patch("utils.image_utils.ImageEnhance") as enhance:
+            apply_image_enhancement(img, {"contrast": 0.8})
+        enhance.Contrast.return_value.enhance.assert_called_once_with(0.8)
+        enhance.Brightness.assert_not_called()
+        enhance.Color.assert_not_called()
+        enhance.Sharpness.assert_not_called()
+
 
 class TestOptimizeForEink:
     def test_rgb_image_keeps_size_and_mode(self):

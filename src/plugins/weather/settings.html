@@ -13,9 +13,9 @@
 <!-- Coordinates and Map Button - Line 2 -->
 <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
     <span>Latitude:</span>
-    <input readonly type="text" id="latitude" name="latitude" class="form-input" style="width: 100px;" />
+    <input type="text" id="latitude" name="latitude" class="form-input" style="width: 100px;" inputmode="decimal" />
     <span>Longitude:</span>
-    <input readonly type="text" id="longitude" name="longitude" class="form-input" style="width: 100px;" />
+    <input type="text" id="longitude" name="longitude" class="form-input" style="width: 100px;" inputmode="decimal" />
     <button type="button" id="openMap" class="action-button compact">Select on Map</button>
 </div>
 
@@ -127,6 +127,66 @@
 
 <script>
 
+    /** Return true when value is a non-empty string that parses to a finite number. */
+    function hasCoord(value) {
+        return typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value));
+    }
+
+    /** Parse a coordinate string, returning fallback when empty/invalid. */
+    function parseCoord(value, fallback) {
+        return hasCoord(value) ? Number(value) : fallback;
+    }
+
+    /** Validate lat/long inputs. Returns true if valid or both empty. */
+    function validateCoordInputs() {
+        const latVal = document.getElementById('latitude').value.trim();
+        const longVal = document.getElementById('longitude').value.trim();
+
+        // Both empty is fine (no location set yet)
+        if (latVal === '' && longVal === '') {
+            return true;
+        }
+
+        if (latVal === '' || longVal === '') {
+            showResponseModal('failure', 'Error! Both latitude and longitude are required.');
+            return false;
+        }
+
+        if (!hasCoord(latVal) || !hasCoord(longVal)) {
+            showResponseModal('failure', 'Error! Latitude and longitude must be valid numbers.');
+            return false;
+        }
+
+        const lat = Number(latVal);
+        const long = Number(longVal);
+        if (lat < -90 || lat > 90) {
+            showResponseModal('failure', 'Error! Latitude must be between -90 and 90.');
+            return false;
+        }
+        if (long < -180 || long > 180) {
+            showResponseModal('failure', 'Error! Longitude must be between -180 and 180.');
+            return false;
+        }
+
+        return true;
+    }
+
+    const weatherHandleAction = window.handleAction;
+    window.handleAction = async function(action) {
+        if (!validateCoordInputs()) {
+            return;
+        }
+        return weatherHandleAction(action);
+    };
+
+    const weatherOpenModal = window.openModal;
+    window.openModal = function(modalId) {
+        if (modalId === 'scheduleModal' && !validateCoordInputs()) {
+            return;
+        }
+        return weatherOpenModal(modalId);
+    };
+
     function updateProviderOptions(provider) {
         const titleTimeZone = document.getElementById('weatherTimeZone');
         const titleTimeZoneLabel = document.querySelector('label[for="weatherTimeZone"]');
@@ -217,15 +277,32 @@
             }
         });
 
-        let latitude = +$latitude.value;
-        let longitude = +$longitude.value;
-        let zoom = latitude && longitude ? 4.5 : 2.5;
         let weatherProvider = 'OpenMeteo';
 
         let map, marker;
+        let markerMoved = false;
+        let hadValidCoords = false;
+
+        // Typing coordinates by hand means the previously selected city name
+        // no longer describes the location, so drop it (same as a map pick).
+        [$latitude, $longitude].forEach($input => {
+            $input.addEventListener('input', () => {
+                document.getElementById('locationName').value = '';
+                document.getElementById('cityResults').innerHTML = '';
+            });
+        });
 
         $openMap.addEventListener('click', () => {
-            openModal('mapModal')
+            if (!validateCoordInputs()) return;
+            // Re-read the inputs every time: settings load after this handler
+            // is bound, and the user may have edited them by hand since.
+            hadValidCoords = hasCoord($latitude.value) && hasCoord($longitude.value);
+            markerMoved = false;
+            const latitude = parseCoord($latitude.value, 0);
+            const longitude = parseCoord($longitude.value, 0);
+            const zoom = hadValidCoords ? 4.5 : 2.5;
+
+            openModal('mapModal');
             setTimeout(() => {
                 if (!map) {
                     map = L.map('map').setView([latitude, longitude], zoom);
@@ -234,13 +311,26 @@
 
                     map.on('click', event => {
                         marker.setLatLng(event.latlng);
+                        markerMoved = true;
                     });
+                    marker.on('dragend', () => {
+                        markerMoved = true;
+                    });
+                } else {
+                    map.setView([latitude, longitude], zoom);
+                    marker.setLatLng([latitude, longitude]);
                 }
                 map.invalidateSize();
             }, 100);
         });
 
         $closeMap.addEventListener('click', () => {
+            // Without a prior location, only save once the user picked a point;
+            // otherwise Save would silently store 0,0.
+            if (!markerMoved && !hadValidCoords) {
+                closeModal('mapModal');
+                return;
+            }
             const position = marker.getLatLng().wrap();
             const lat = Math.round(position.lat * 10000) / 10000;
             const lon = Math.round(position.lng * 10000) / 10000;
@@ -258,8 +348,8 @@
 
         if (loadPluginSettings) {
             document.getElementById('autoRefresh').value = pluginSettings?.autoRefresh || '30';
-            document.getElementById('latitude').value = pluginSettings.latitude;
-            document.getElementById('longitude').value = pluginSettings.longitude;
+            document.getElementById('latitude').value = pluginSettings.latitude ?? '';
+            document.getElementById('longitude').value = pluginSettings.longitude ?? '';
 
             document.getElementById('units').value = pluginSettings.units;
             document.getElementById('displayLanguage').value = pluginSettings.displayLanguage || 'en';

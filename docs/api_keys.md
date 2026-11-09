@@ -76,7 +76,7 @@ Required for the Image Album plugin for the Immich Provider
 
 - Login to your Immich instance https://my.immich.app/
 - Under Account Settings > API Keys, create a new API Key
-- Assign the `asset.read`, `asset.download`, and `album.read` permissions and generate the key
+- Assign the `asset.view`, `asset.read`, `asset.download`, and `album.read` permissions and generate the key
 - Store your api key in the .env file with the key `IMMICH_KEY`
     ```
     IMMICH_KEY=your-key

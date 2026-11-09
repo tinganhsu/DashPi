@@ -4,10 +4,23 @@ All notable changes to DashPi are documented here.
 
 ## [Unreleased]
 
+Ports the applicable fatihak/InkyPi changes made after the fork point `fb71cc3` (up to `2099411`, 2026-11-04).
+
+### Added
+- **Weather manual coordinates** (upstream #640): Latitude and longitude can be typed directly instead of only picked on the map. The page validates them (both required, numeric, in range) before Update Now or Add to Loop, the map opens at the typed location, and typing clears the previously selected city name so the title is not stale. Blank coordinates are now reported as "required" rather than "must be valid numbers".
+- **Waveshare driver path for `install.sh -W`** (upstream #739): `-W` also accepts the driver's path inside the waveshareteam/e-Paper repository (e.g. `E-paper_Separate_Program/3.6inch_e-Paper_E/RaspberryPi_JetsonNano/python/lib/waveshare_epd/epd3in6e.py`) for models not published in the common driver directory; `epdconfig.py` is taken from the same directory with the common one as fallback. A bare model name behaves as before.
+
 ### Fixed
 - **AI Photo Stylist 1min.ai ignored the source photo**: The 1min.ai provider called `IMAGE_GENERATOR` with the prompt only, so results never followed the selected photo. It now uploads the photo through the Asset API and calls `IMAGE_EDITOR` with it as `imageUrl`.
+- **Weather forecast day labels off by one** (upstream #613): Open-Meteo daily dates are already local to the location, but were treated as UTC midnight and converted, so west of UTC every forecast card showed the previous weekday. The moon phase's compensating `+1 day` is gone too, so east of UTC it no longer shows tomorrow's phase.
+- **Immich on a LAN could not load photos**: The image loader's SSRF guard rejected private addresses, so a self-hosted Immich listed the album but every download failed with "URL resolves to blocked address". `from_url()` takes an explicit `allow_private` opt-in that only the Immich provider uses; every other plugin keeps the block, and non-HTTP schemes and reserved ranges stay rejected.
+- **Streamed image downloads release their connection** (upstream #781): Both download paths now hold the response in a context manager, so it is closed on success, HTTP errors, undecodable images and the download deadline alike.
+- **`update.sh` package index race** (upstream #783): `apt-get update` ran in the background while `apt-get install` started, so installs could ask for superseded package versions. It now completes first.
 
 ### Changed
+- **Immich album loading** (upstream #625): Downloads the server-rendered preview (`/thumbnail?size=preview`, falling back to the legacy `/thumbnail`, then `/original`) instead of the original file, which can be a 50MP+ RAW/HEIC the Pi cannot decode. Assets are listed via `search/metadata` filtered to images, so videos are never picked; pagination is kept for albums over 1000 photos, and servers whose search returns nothing fall back to the album detail endpoint. The API key now also needs `asset.view` (without it the plugin falls back to `/original`).
+- **Image enhancement skips neutral factors** (upstream #742): Brightness, contrast, saturation and sharpness at 1.0 no longer run a full-frame blend each, saving four passes per refresh with default settings.
+- **Dependencies**: flask 3.1.3, werkzeug 3.1.9, requests 2.34.2, urllib3 2.8.0, python-dotenv 1.2.4, pi-heif 1.4.0, pytz 2026.6, openai 3.46.0 (now on httpx2; no custom HTTP client is used here), icalendar 7.3.0, recurring-ical-events 3.8.2, psutil 7.2.2, cysystemd 2.0.5, feedparser 6.0.14, inky 2.6.0, gpiozero 2.0.1.post3, pytest 9.2.0, dev numpy 2.4.6. **Pillow stays at 12.3.0**: Pillow 13 breaks Inky palette conversion (`ValueError: empty palette`, still present in Inky 2.6.0) and multiline `getbbox()` used by the comic plugin (upstream #800).
 - **AI Photo Stylist 1min.ai models**: Removed Grok-2 Image (no image-edit support on 1min.ai) and added Qwen Image 3.0 Edit and Qwen Image 3.0 Pro Edit. Gemini 2.5 Flash Image now uses 1min.ai's `gemini-2.5-flash-image` id; saved Grok settings fall back to GPT Image 2.5 Flare and the old Gemini 2.5 id still resolves.
 
 ## [2.2.5] — 2026-10-27

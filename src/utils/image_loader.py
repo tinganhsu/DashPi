@@ -47,9 +47,14 @@ class SSRFSafeAdapter(requests.adapters.HTTPAdapter):
         )
 
 
-def _validate_url(url):
+def _validate_url(url, allow_private=False):
     """Validate a URL to prevent SSRF attacks. Blocks private/loopback IPs.
     Returns the resolved safe IP address to prevent DNS Rebinding.
+
+    allow_private: permit private, loopback and link-local targets. Only for
+    callers whose URL is a server the device owner configured themselves
+    (e.g. a self-hosted Immich on the LAN); the scheme check and reserved-range
+    block still apply.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https'):
@@ -64,7 +69,7 @@ def _validate_url(url):
         safe_ips = []
         for family, _, _, _, sockaddr in resolved:
             ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            if ip.is_reserved or (not allow_private and (ip.is_private or ip.is_loopback or ip.is_link_local)):
                 raise ValueError(f"URL resolves to blocked address: {ip}")
             safe_ips.append(str(ip))
         
@@ -137,7 +142,8 @@ class AdaptiveImageLoader:
         self.is_low_resource = _is_low_resource_device()
         self.max_megapixels = self.MAX_MEGAPIXELS_LOW_RESOURCE if self.is_low_resource else self.MAX_MEGAPIXELS_HIGH_RESOURCE
 
-    def from_url(self, url, dimensions, timeout_ms=40000, resize=True, headers=None, fit_mode='fill'):
+    def from_url(self, url, dimensions, timeout_ms=40000, resize=True, headers=None, fit_mode='fill',
+                 allow_private=False):
         """
         Load an image from a URL and optionally resize it.
 
@@ -148,18 +154,20 @@ class AdaptiveImageLoader:
             resize: Whether to resize the image (default True)
             headers: Optional dict of HTTP headers to include in request
             fit_mode: 'fill' (crop to fill, default) or 'fit' (letterbox to fit)
+            allow_private: Allow private/LAN addresses (see _validate_url); only
+                for user-configured self-hosted servers
 
         Returns:
             PIL Image object resized to dimensions, or None on error
         """
         logger.debug(f"Loading image from URL: {url} (fit_mode={fit_mode})")
 
-        _validate_url(url)
+        _validate_url(url, allow_private=allow_private)
 
         if self.is_low_resource:
-            return self._load_from_url_lowmem(url, dimensions, timeout_ms, resize, headers, fit_mode)
+            return self._load_from_url_lowmem(url, dimensions, timeout_ms, resize, headers, fit_mode, allow_private)
         else:
-            return self._load_from_url_fast(url, dimensions, timeout_ms, resize, headers, fit_mode)
+            return self._load_from_url_fast(url, dimensions, timeout_ms, resize, headers, fit_mode, allow_private)
 
     def from_file(self, path, dimensions, resize=True, fit_mode='fill'):
         """
@@ -251,7 +259,8 @@ class AdaptiveImageLoader:
 
     # ========== LOW-RESOURCE IMPLEMENTATIONS ==========
 
-    def _load_from_url_lowmem(self, url, dimensions, timeout_ms, resize, headers=None, fit_mode='fill'):
+    def _load_from_url_lowmem(self, url, dimensions, timeout_ms, resize, headers=None, fit_mode='fill',
+                              allow_private=False):
         """Low-memory URL loading using temp file + draft mode."""
         tmp_path = None
 
@@ -259,7 +268,7 @@ class AdaptiveImageLoader:
             logger.debug("Using disk-based streaming (low-resource mode)")
 
             # SSRF Protection: Validate URL and get safe IP to pin the connection
-            safe_ip = _validate_url(url)
+            safe_ip = _validate_url(url, allow_private=allow_private)
             parsed = urlparse(url)
 
             # Merge provided headers with defaults
@@ -275,20 +284,20 @@ class AdaptiveImageLoader:
                     adapter = SSRFSafeAdapter(safe_ip)
                     session.mount(f"{parsed.scheme}://", adapter)
 
-                    response = session.get(url, timeout=timeout_ms / 1000, stream=True, 
-                                           headers=request_headers, verify=True)
-                    response.raise_for_status()
+                    # Context manager releases the streamed connection on success and on every error path.
+                    with session.get(url, timeout=timeout_ms / 1000, stream=True,
+                                     headers=request_headers, verify=True) as response:
+                        response.raise_for_status()
 
-                    downloaded_bytes = 0
-                    deadline = time.monotonic() + timeout_ms / 1000
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            tmp.write(chunk)
-                            downloaded_bytes += len(chunk)
-                        if time.monotonic() > deadline:
-                            response.close()
-                            raise requests.exceptions.Timeout(
-                                f"Download exceeded {timeout_ms/1000:.0f}s time limit ({downloaded_bytes/1024:.0f}KB downloaded)")
+                        downloaded_bytes = 0
+                        deadline = time.monotonic() + timeout_ms / 1000
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                tmp.write(chunk)
+                                downloaded_bytes += len(chunk)
+                            if time.monotonic() > deadline:
+                                raise requests.exceptions.Timeout(
+                                    f"Download exceeded {timeout_ms/1000:.0f}s time limit ({downloaded_bytes/1024:.0f}KB downloaded)")
 
                     logger.debug(f"Downloaded {downloaded_bytes / 1024:.1f}KB to temp file")
 
@@ -354,13 +363,14 @@ class AdaptiveImageLoader:
 
     # ========== HIGH-PERFORMANCE IMPLEMENTATIONS ==========
 
-    def _load_from_url_fast(self, url, dimensions, timeout_ms, resize, headers=None, fit_mode='fill'):
+    def _load_from_url_fast(self, url, dimensions, timeout_ms, resize, headers=None, fit_mode='fill',
+                            allow_private=False):
         """High-performance URL loading using in-memory processing."""
         try:
             logger.debug("Using in-memory processing (high-performance mode)")
 
             # SSRF Protection: Validate URL and get safe IP to pin the connection
-            safe_ip = _validate_url(url)
+            safe_ip = _validate_url(url, allow_private=allow_private)
             parsed = urlparse(url)
 
             # Merge provided headers with defaults
@@ -373,20 +383,20 @@ class AdaptiveImageLoader:
                 session.mount(f"{parsed.scheme}://", adapter)
 
                 timeout_secs = timeout_ms / 1000
-                response = session.get(url, timeout=timeout_secs, stream=True, 
-                                       headers=request_headers, verify=True)
-                response.raise_for_status()
+                # Context manager releases the streamed connection on success and on every error path.
+                with session.get(url, timeout=timeout_secs, stream=True,
+                                 headers=request_headers, verify=True) as response:
+                    response.raise_for_status()
 
-                # Read with deadline to prevent slow-trickle hangs
-                chunks = []
-                deadline = time.monotonic() + timeout_secs
-                for chunk in response.iter_content(chunk_size=65536):
-                    if chunk:
-                        chunks.append(chunk)
-                    if time.monotonic() > deadline:
-                        response.close()
-                        raise requests.exceptions.Timeout(
-                            f"Download exceeded {timeout_secs:.0f}s time limit")
+                    # Read with deadline to prevent slow-trickle hangs
+                    chunks = []
+                    deadline = time.monotonic() + timeout_secs
+                    for chunk in response.iter_content(chunk_size=65536):
+                        if chunk:
+                            chunks.append(chunk)
+                        if time.monotonic() > deadline:
+                            raise requests.exceptions.Timeout(
+                                f"Download exceeded {timeout_secs:.0f}s time limit")
                 img_bytes = b''.join(chunks)
                 del chunks
                 buf = BytesIO(img_bytes)
