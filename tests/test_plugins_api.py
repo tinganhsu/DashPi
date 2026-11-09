@@ -34,6 +34,7 @@ GITHUB_CONFIG = {"id": "github", "display_name": "GitHub", "class": "GitHub"}
 ART_MUSEUM_CONFIG = {"id": "art_museum", "display_name": "Art Museum", "class": "ArtMuseum"}
 CALENDAR_CONFIG = {"id": "calendar", "display_name": "Calendar", "class": "Calendar"}
 ISS_CONFIG = {"id": "iss_tracker", "display_name": "ISS Tracker", "class": "ISSTracker"}
+AVIAN_COLLAGE_CONFIG = {"id": "avian_collage", "display_name": "BirdNet Collage", "class": "AvianCollage"}
 
 
 # ===========================================================================
@@ -271,14 +272,10 @@ class TestApod:
         from plugins.apod.apod import Apod
         return Apod(APOD_CONFIG)
 
-    def test_missing_api_key(self, plugin, mock_device_config):
-        mock_device_config.load_env_key.return_value = None
-        with pytest.raises(RuntimeError, match="NASA API Key"):
-            plugin.generate_image({}, mock_device_config)
-
     @patch("plugins.apod.apod.get_http_session")
     def test_successful_image(self, mock_session, plugin, mock_device_config):
-        mock_device_config.load_env_key.return_value = "fake-nasa-key"
+        # science.nasa.gov endpoint: no NASA API key needed
+        mock_device_config.load_env_key.return_value = None
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -299,7 +296,7 @@ class TestApod:
 
     @patch("plugins.apod.apod.get_http_session")
     def test_all_videos_raises(self, mock_session, plugin, mock_device_config):
-        mock_device_config.load_env_key.return_value = "fake-nasa-key"
+        mock_device_config.load_env_key.return_value = None
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -342,6 +339,31 @@ class TestAIText:
                 {"textPrompt": "Tell me a joke", "provider": "gemini"},
                 mock_device_config
             )
+
+    @pytest.mark.parametrize("saved, expected", [
+        (None, "gemini-flash-latest"),
+        ("gemini-flash-lite-latest", "gemini-flash-lite-latest"),
+        ("gemini-2.5-flash", "gemini-flash-latest"),   # closed to new users
+        ("gemini-2.0-flash", "gemini-flash-latest"),   # retired by Google
+        ("gemini-1.5-flash", "gemini-flash-latest"),   # retired by Google
+    ])
+    @patch("google.genai.Client")
+    def test_gemini_model_used(self, mock_client, plugin, mock_device_config, saved, expected):
+        mock_device_config.load_env_key.return_value = "fake-gemini-key"
+        mock_client.return_value.models.generate_content.return_value.text = " Hello birds "
+        settings = {"textPrompt": "Say hello", "provider": "gemini"}
+        if saved:
+            settings["geminiTextModel"] = saved
+        assert plugin._generate_with_gemini(settings, mock_device_config, "Say hello") == "Hello birds"
+        assert mock_client.return_value.models.generate_content.call_args.kwargs["model"] == expected
+
+    @patch("google.genai.Client")
+    def test_gemini_credits_depleted_message(self, mock_client, plugin, mock_device_config):
+        mock_device_config.load_env_key.return_value = "fake-gemini-key"
+        mock_client.return_value.models.generate_content.side_effect = Exception(
+            "402 RESOURCE_EXHAUSTED. Your prepayment credits are depleted.")
+        with pytest.raises(RuntimeError, match="prepaid credits are used up"):
+            plugin._generate_with_gemini({"provider": "gemini"}, mock_device_config, "hi")
 
     def test_render_pil(self, plugin):
         img = plugin._render_pil((800, 480), "Daily Joke", "Why did the chicken cross the road?", {})
@@ -796,3 +818,162 @@ class TestWeatherHelpers:
         assert get_moon_phase_name(23.0) == "lastquarter"
         assert get_moon_phase_name(29.0) == "waningcrescent"
         assert get_moon_phase_name(29.5) == "newmoon"  # wraps
+
+
+# ===========================================================================
+# BirdNet Collage Plugin (id: avian_collage)
+# ===========================================================================
+
+class TestAvianCollage:
+    @pytest.fixture
+    def plugin(self):
+        from plugins.avian_collage.avian_collage import AvianCollage
+        return AvianCollage(AVIAN_COLLAGE_CONFIG)
+
+    @staticmethod
+    def _png_response(size=(1024, 600), status=200, headers=None):
+        from io import BytesIO
+        buf = BytesIO()
+        Image.new("RGB", size, "#efece0").save(buf, format="PNG")
+        response = MagicMock()
+        response.status_code = status
+        response.content = buf.getvalue()
+        response.headers = headers or {}
+        return response
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_successful_image(self, mock_session, plugin, mock_device_config):
+        mock_session.return_value.get.return_value = self._png_response()
+        img = plugin.generate_image({"stationUrl": "http://birdnet.local/", "window": "12"}, mock_device_config)
+        assert_valid_image(img, (800, 480))
+        mock_session.return_value.get.assert_called_once()
+        assert mock_session.return_value.get.call_args[0][0] == "http://birdnet.local/dashpi/collage-12h.png"
+
+    @pytest.mark.parametrize("window, filename", [
+        ("1", "collage-1h.png"), ("12", "collage-12h.png"), ("24", "collage-24h.png"), ("168", "collage-168h.png"), (168, "collage-168h.png")])
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_window_picks_station_png(self, mock_session, plugin, mock_device_config, window, filename):
+        mock_session.return_value.get.return_value = self._png_response()
+        plugin.generate_image({"window": window}, mock_device_config)
+        assert mock_session.return_value.get.call_args[0][0] == f"http://birdnet.local/dashpi/{filename}"
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_defaults_and_vertical(self, mock_session, plugin, mock_device_config):
+        mock_session.return_value.get.return_value = self._png_response((600, 1024))
+        mock_device_config.get_config.side_effect = (
+            lambda key=None, default=None: "vertical" if key == "orientation" else default)
+        img = plugin.generate_image({}, mock_device_config)
+        assert_valid_image(img, (480, 800))
+        assert mock_session.return_value.get.call_args[0][0] == "http://birdnet.local/dashpi/collage-24h.png"
+
+    @pytest.mark.parametrize("url", ["file:///etc", "birdnet.local", "http://"])
+    def test_invalid_station_url(self, plugin, mock_device_config, url):
+        with pytest.raises(RuntimeError, match="Invalid bird station URL"):
+            plugin.generate_image({"stationUrl": url}, mock_device_config)
+
+    def test_unknown_window(self, plugin, mock_device_config):
+        with pytest.raises(RuntimeError, match="Unknown time window"):
+            plugin.generate_image({"window": "48"}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_station_offline(self, mock_session, plugin, mock_device_config):
+        import requests
+        mock_session.return_value.get.side_effect = requests.ConnectionError("no route")
+        with pytest.raises(RuntimeError, match="Bird station unreachable at birdnet.local"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_station_timeout(self, mock_session, plugin, mock_device_config):
+        import requests
+        mock_session.return_value.get.side_effect = requests.Timeout()
+        with pytest.raises(RuntimeError, match="unreachable"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_not_rendered_yet(self, mock_session, plugin, mock_device_config):
+        mock_session.return_value.get.return_value = self._png_response(status=404)
+        with pytest.raises(RuntimeError, match="render timer"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_server_error(self, mock_session, plugin, mock_device_config):
+        mock_session.return_value.get.return_value = self._png_response(status=500)
+        with pytest.raises(RuntimeError, match="HTTP 500"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_not_an_image(self, mock_session, plugin, mock_device_config):
+        response = self._png_response()
+        response.content = b"<html>oops</html>"
+        mock_session.return_value.get.return_value = response
+        with pytest.raises(RuntimeError, match="could not be decoded"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_too_large(self, mock_session, plugin, mock_device_config):
+        from plugins.avian_collage import avian_collage
+        response = self._png_response()
+        response.content = b"0" * (avian_collage.MAX_BYTES + 1)
+        mock_session.return_value.get.return_value = response
+        with pytest.raises(RuntimeError, match="too large"):
+            plugin.generate_image({}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_stale_image_still_shown(self, mock_session, plugin, mock_device_config, caplog):
+        mock_session.return_value.get.return_value = self._png_response(
+            headers={"Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"})
+        img = plugin.generate_image({}, mock_device_config)
+        assert_valid_image(img, (800, 480))
+        assert "last updated" in caplog.text
+        # "not updated since" strip along the bottom: white bar under a black rule
+        assert img.getpixel((2, 478)) == (255, 255, 255)
+        assert img.getpixel((2, 480 - 28)) == (0, 0, 0)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_fresh_image_has_no_stale_notice(self, mock_session, plugin, mock_device_config):
+        from email.utils import format_datetime
+        from datetime import datetime, timezone
+        from io import BytesIO
+        buf = BytesIO()
+        Image.new("RGB", (800, 480), (200, 40, 30)).save(buf, format="PNG")
+        response = self._png_response(
+            headers={"Last-Modified": format_datetime(datetime.now(timezone.utc), usegmt=True)})
+        response.content = buf.getvalue()
+        mock_session.return_value.get.return_value = response
+        img = plugin.generate_image({}, mock_device_config)
+        assert img.getpixel((2, 478)) == (200, 40, 30)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_dark_mode_fetches_dark_copy(self, mock_session, plugin, mock_device_config):
+        from io import BytesIO
+        buf = BytesIO()
+        Image.new("RGB", (1024, 600), (250, 250, 250)).save(buf, format="PNG")
+        response = self._png_response()
+        response.content = buf.getvalue()
+        mock_session.return_value.get.return_value = response
+        img = plugin.generate_image({"window": "12", "darkMode": "on"}, mock_device_config)
+        assert mock_session.return_value.get.call_args[0][0] == "http://birdnet.local/dashpi/collage-12h-dark.png"
+        # no paper whitening in dark mode
+        assert img.convert("RGB").getpixel((5, 5)) == (250, 250, 250)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_dark_mode_missing_on_station(self, mock_session, plugin, mock_device_config):
+        mock_session.return_value.get.return_value = self._png_response(status=404)
+        with pytest.raises(RuntimeError, match="Dark collage not found"):
+            plugin.generate_image({"darkMode": "on"}, mock_device_config)
+
+    @patch("plugins.avian_collage.avian_collage.get_http_session")
+    def test_paper_snapped_to_white(self, mock_session, plugin, mock_device_config):
+        from io import BytesIO
+        from PIL import ImageDraw
+        buf = BytesIO()
+        img = Image.new("RGB", (1024, 600), (252, 252, 251))  # the station's paper colour
+        ImageDraw.Draw(img).rectangle((400, 200, 600, 400), fill=(200, 40, 30))
+        img.save(buf, format="PNG")
+        response = self._png_response()
+        response.content = buf.getvalue()
+        mock_session.return_value.get.return_value = response
+        out = plugin.generate_image({}, mock_device_config)
+        assert out.mode == "RGB"
+        assert out.getpixel((5, 5)) == (255, 255, 255)
+        assert out.getpixel((400, 240)) == (200, 40, 30)

@@ -22,7 +22,7 @@ DashPi 是一個開源、可自訂的 Raspberry Pi 智慧顯示器專案。它�
 - **自我更新**：可從 Web UI 檢查並套用更新
 - **開源**：可自行修改、擴充，或建立自己的 plugin
 
-**內建 plugins 包含**：Weather、Clock、Plugin Manager、AI Image、AI Photo Stylist、AI Text、NASA APOD、Art Museum、Stocks、ISS Tracker、Flight Tracker、ShazamPi、Calendar、Newspaper、Comics、RSS、Image Upload、Image Album、Image URL、Countdown、GitHub、To-Do List、Unsplash、Year Progress、Wikipedia POTD 等。
+**內建 plugins 包含**：Weather、Clock、Plugin Manager、AI Image、AI Photo Stylist、AI Text、NASA APOD、Art Museum、Stocks、ISS Tracker、Flight Tracker、BirdNet Collage（需另外架設 [BirdNET-Pi + AvianVisitors](./src/plugins/avian_collage/README.md) 鳥類偵測站）、ShazamPi、Calendar、Newspaper、Comics、RSS、Image Upload、Image Album、Image URL、Countdown、GitHub、To-Do List、Unsplash、Year Progress、Wikipedia POTD 等。
 
 AI Photo Stylist 的使用方式請參考 [AI Photo Stylist Plugin](./docs/ai_photo_stylist.md)。自訂 plugin 的文件請參考 [Building Plugins](./docs/building_plugins.md)。
 

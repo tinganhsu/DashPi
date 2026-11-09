@@ -187,3 +187,4 @@ mock_display_output/
 # Claude Code local settings
 .claude/
 CLAUDE.md
+*.bsp
